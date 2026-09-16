@@ -36,6 +36,12 @@ const DEVICE_TOUCHING_EVENTS = new Set([
   'battery.updated',
   'battery.warning',
   'battery.critical',
+  // Published by events.py::publish_constable_location_updated on every
+  // GPS report -- was missing here, so a device's displayed coordinates
+  // (Live Map, Monitoring, Device Details) only ever updated on the next
+  // UNRELATED device-touching event (e.g. the next heartbeat), not on the
+  // location update itself.
+  'constable.location_updated',
 ])
 
 const RECORDING_TOUCHING_EVENTS = new Set([

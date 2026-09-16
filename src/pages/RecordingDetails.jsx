@@ -5,6 +5,7 @@ import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import ChunkPlaybackView from '../components/ChunkPlaybackView.jsx'
 import { formatDateTime, formatBytes, titleCase } from '../utils/format.js'
 
 export default function RecordingDetails() {
@@ -70,10 +71,11 @@ export default function RecordingDetails() {
 
         <section className="panel p-4">
           <h2 className="mb-3 font-semibold text-ink-100">Playback</h2>
-          <p className="text-sm text-ink-300">
-            This system provides an ordered chunk manifest, not a continuous live video stream. Individual chunks can be
-            reviewed below; a unified playback experience is not currently available from this API.
+          <p className="mb-3 text-xs text-ink-500">
+            Chunks are stored and played back as separate segments, not one continuous file -- playback advances to the
+            next chunk automatically as each one ends.
           </p>
+          <ChunkPlaybackView recordingId={recording.id} chunks={manifest?.chunks || []} />
         </section>
       </div>
 

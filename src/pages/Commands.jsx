@@ -7,7 +7,7 @@ import StatusBadge from '../components/StatusBadge.jsx'
 import { formatDateTime, titleCase } from '../utils/format.js'
 
 const STATUS_OPTIONS = ['', 'pending', 'sent', 'acknowledged', 'executed', 'failed', 'timeout', 'cancelled']
-const TYPE_OPTIONS = ['', 'start_recording', 'stop_recording']
+const TYPE_OPTIONS = ['', 'start_recording', 'stop_recording', 'start_live_stream', 'stop_live_stream']
 const PAGE_SIZE = 50
 
 export default function Commands() {

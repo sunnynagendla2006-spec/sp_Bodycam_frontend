@@ -12,6 +12,7 @@ const mockGetManifest = vi.fn()
 vi.mock('../api/recordings.js', () => ({
   getRecording: (...args) => mockGetRecording(...args),
   getRecordingManifest: (...args) => mockGetManifest(...args),
+  chunkStreamUrl: (recordingId, chunkNumber) => `http://localhost:8000/recordings/${recordingId}/chunks/${chunkNumber}/stream`,
 }))
 
 function renderAt(recordingId) {
@@ -35,10 +36,10 @@ describe('RecordingDetails chunk timeline', () => {
       recording_session_id: 'rec-1', status: 'recording', is_complete: false,
       highest_chunk_number: 5, missing_chunk_numbers: [3],
       chunks: [
-        { id: 'c1', chunk_number: 1, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, created_at: '2026-01-01T00:00:01Z' },
-        { id: 'c2', chunk_number: 2, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, created_at: '2026-01-01T00:00:02Z' },
-        { id: 'c4', chunk_number: 4, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, created_at: '2026-01-01T00:00:04Z' },
-        { id: 'c5', chunk_number: 5, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: true, created_at: '2026-01-01T00:00:05Z' },
+        { id: 'c1', chunk_number: 1, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, upload_status: 'uploaded', created_at: '2026-01-01T00:00:01Z' },
+        { id: 'c2', chunk_number: 2, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, upload_status: 'uploaded', created_at: '2026-01-01T00:00:02Z' },
+        { id: 'c4', chunk_number: 4, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: false, upload_status: 'uploaded', created_at: '2026-01-01T00:00:04Z' },
+        { id: 'c5', chunk_number: 5, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4', is_last_chunk: true, upload_status: 'uploaded', created_at: '2026-01-01T00:00:05Z' },
       ],
     })
 
@@ -50,8 +51,37 @@ describe('RecordingDetails chunk timeline', () => {
     expect(screen.getByTitle('Chunk 4 — received')).toBeInTheDocument()
     expect(screen.getByTitle('Chunk 5 — received')).toBeInTheDocument()
 
-    // Never claims a live video stream exists.
-    expect(screen.getByText(/not a continuous live video stream/i)).toBeInTheDocument()
+    // A real playback control is rendered (the uploaded chunks, not the
+    // missing one, and never a claim of a continuous/live stream -- it's
+    // chunk-by-chunk, starting at chunk 1 of the 4 actually uploaded).
+    expect(screen.getByText('Chunk 1 (1 of 4)')).toBeInTheDocument()
+  })
+
+  it('renders an actual playable <video> for the first uploaded chunk, and advances to the next on request', async () => {
+    mockGetRecording.mockResolvedValue({
+      id: 'rec-4', constable_id: 'const-1', status: 'completed', trigger_type: 'manual',
+      started_at: '2026-01-01T00:00:00Z', ended_at: '2026-01-01T00:01:00Z', incident_id: null,
+      chunk_count: 2, highest_chunk_number: 2, missing_chunk_numbers: [],
+    })
+    mockGetManifest.mockResolvedValue({
+      recording_session_id: 'rec-4', status: 'completed', is_complete: true,
+      highest_chunk_number: 2, missing_chunk_numbers: [],
+      chunks: [
+        { id: 'c1', chunk_number: 1, file_size: 2048, duration_seconds: 20.0, mime_type: 'video/mp4', is_last_chunk: false, upload_status: 'uploaded', created_at: '2026-01-01T00:00:20Z' },
+        { id: 'c2', chunk_number: 2, file_size: 1024, duration_seconds: 10.0, mime_type: 'video/mp4', is_last_chunk: true, upload_status: 'uploaded', created_at: '2026-01-01T00:00:30Z' },
+      ],
+    })
+
+    renderAt('rec-4')
+
+    await waitFor(() => expect(screen.getByText('Chunk 1 (1 of 2)')).toBeInTheDocument())
+    const video = document.querySelector('video')
+    expect(video).toBeTruthy()
+    expect(video.src).toContain('/recordings/rec-4/chunks/1/stream')
+
+    screen.getByText('Next →').click()
+    await waitFor(() => expect(screen.getByText('Chunk 2 (2 of 2) · last chunk')).toBeInTheDocument())
+    expect(document.querySelector('video').src).toContain('/recordings/rec-4/chunks/2/stream')
   })
 
   it('shows an empty state, not a broken/crashed UI, when no chunks have been uploaded yet', async () => {

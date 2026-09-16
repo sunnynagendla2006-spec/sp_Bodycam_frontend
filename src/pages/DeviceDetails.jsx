@@ -7,7 +7,6 @@ import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { getDevice } from '../api/devices.js'
 import { listAlerts } from '../api/alerts.js'
 import { listDeviceCommands, issueCommand, cancelCommand } from '../api/commands.js'
-import { stopLiveStream } from '../api/liveStream.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, ConfirmDialog } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
@@ -90,13 +89,25 @@ export default function DeviceDetails() {
     }
   }
 
-  async function handleStopLive(sessionId) {
+  async function handleStopLive() {
+    // Issues the SAME stop_live_stream remote command the constable's own
+    // phone already handles correctly (see mobile home_screen.dart's
+    // _handleRemoteCommand), rather than calling the live-stream session's
+    // own /stop endpoint directly. That direct endpoint only marks the
+    // session ended in the database and notifies OTHER admin/control_room
+    // viewers -- it was never delivered to the publishing device itself
+    // (send_to_control_room never reaches a constable-role connection), so
+    // the phone's camera kept publishing indefinitely after a Control Room
+    // "Stop live stream" click even though the dashboard showed it as
+    // stopped. Routing through the command channel is what actually
+    // reaches the phone.
     setBusy(true)
     try {
-      await stopLiveStream(sessionId)
-      notify('Live stream stopped', { tone: 'success' })
+      await issueCommand(id, 'stop_live_stream')
+      notify('Stop command sent to device', { tone: 'success' })
       setWatchingSessionId(null)
       setConfirming(null)
+      await load()
     } catch (err) {
       notify(friendlyErrorMessage(err), { tone: 'error' })
     } finally {
@@ -321,7 +332,7 @@ export default function DeviceDetails() {
         tone="danger"
         busy={busy}
         onCancel={() => setConfirming(null)}
-        onConfirm={() => (confirming === 'stop_live_stream' ? handleStopLive(liveSession.id) : handleIssueCommand(confirming))}
+        onConfirm={() => (confirming === 'stop_live_stream' ? handleStopLive() : handleIssueCommand(confirming))}
       />
     </div>
   )
