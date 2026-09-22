@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useOperations } from '../../context/OperationsContext.jsx'
@@ -23,6 +24,7 @@ export default function AppShell() {
   const { user, logout } = useAuth()
   const { connected, counts } = useOperations()
   const navigate = useNavigate()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   function handleLogout() {
     logout()
@@ -31,7 +33,19 @@ export default function AppShell() {
 
   return (
     <div className="flex h-screen bg-base-950 text-ink-100">
-      <aside className="flex w-64 shrink-0 flex-col border-r border-base-700 bg-base-900">
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 transform flex-col border-r border-base-700 bg-base-900 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
         <div className="flex items-center gap-3 border-b border-base-700 px-5 py-5">
           <span className="text-2xl">🚨</span>
           <div>
@@ -46,6 +60,7 @@ export default function AppShell() {
               key={item.to}
               to={item.to}
               end={item.end}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isActive ? 'bg-signal-blue/15 text-sky-300' : 'text-ink-300 hover:bg-base-700/60 hover:text-ink-100'
@@ -89,7 +104,17 @@ export default function AppShell() {
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex items-center justify-between border-b border-base-700 bg-base-900/60 px-6 py-3">
-          <div className="flex items-center gap-2 text-sm text-ink-500">
+          <div className="flex items-center gap-3 text-sm text-ink-500">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+              className="rounded-lg p-1.5 text-ink-300 hover:bg-base-700/60 hover:text-ink-100 lg:hidden"
+              aria-label="Open navigation menu"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
+              </svg>
+            </button>
             <span
               className={`h-2 w-2 rounded-full ${connected ? 'bg-signal-green animate-pulseSlow' : 'bg-base-500'}`}
               title={connected ? 'Live updates connected' : 'Live updates disconnected'}

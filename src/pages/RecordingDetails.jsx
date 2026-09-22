@@ -6,11 +6,11 @@ import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import ChunkPlaybackView from '../components/ChunkPlaybackView.jsx'
-import { formatDateTime, formatBytes, titleCase } from '../utils/format.js'
+import { formatDateTime, formatBytes, titleCase, shortId } from '../utils/format.js'
 
 export default function RecordingDetails() {
   const { id } = useParams()
-  const { label: constableLabel } = useConstableLookup()
+  const { label: constableLabel, byId: constablesById } = useConstableLookup()
   const [recording, setRecording] = useState(null)
   const [manifest, setManifest] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -42,6 +42,10 @@ export default function RecordingDetails() {
   const missingSet = new Set(manifest?.missing_chunk_numbers || [])
   const highest = manifest?.highest_chunk_number || 0
   const timeline = Array.from({ length: highest }, (_, i) => i + 1)
+  // Station comes from the recording's constable record, exactly like
+  // LiveMap.jsx's own popup (r.constable.station_name) -- not a second,
+  // separate lookup.
+  const stationName = constablesById?.[recording.constable_id]?.station_name
 
   return (
     <div className="space-y-6">
@@ -59,6 +63,17 @@ export default function RecordingDetails() {
           <h2 className="mb-3 font-semibold text-ink-100">Recording details</h2>
           <dl className="grid grid-cols-2 gap-3 text-sm">
             <div><dt className="text-ink-500">Trigger</dt><dd className="text-ink-100">{titleCase(recording.trigger_type)}</dd></div>
+            <div>
+              <dt className="text-ink-500">Device</dt>
+              <dd className="text-ink-100">
+                {recording.device_id ? (
+                  <Link to={`/devices/${recording.device_id}`} className="text-sky-300 hover:underline">
+                    {shortId(recording.device_id)}
+                  </Link>
+                ) : '—'}
+              </dd>
+            </div>
+            <div><dt className="text-ink-500">Station</dt><dd className="text-ink-100">{stationName || '—'}</dd></div>
             <div><dt className="text-ink-500">Started</dt><dd className="text-ink-100">{formatDateTime(recording.started_at)}</dd></div>
             <div><dt className="text-ink-500">Ended</dt><dd className="text-ink-100">{formatDateTime(recording.ended_at)}</dd></div>
             <div><dt className="text-ink-500">Chunks received</dt><dd className="text-ink-100">{recording.chunk_count}</dd></div>
@@ -115,6 +130,7 @@ export default function RecordingDetails() {
                   <th className="pb-2">Size</th>
                   <th className="pb-2">Duration</th>
                   <th className="pb-2">MIME</th>
+                  <th className="pb-2">GPS</th>
                   <th className="pb-2">Uploaded</th>
                 </tr>
               </thead>
@@ -125,6 +141,9 @@ export default function RecordingDetails() {
                     <td className="py-2 text-ink-300">{formatBytes(c.file_size)}</td>
                     <td className="py-2 text-ink-300">{c.duration_seconds != null ? `${c.duration_seconds}s` : '—'}</td>
                     <td className="py-2 text-ink-300">{c.mime_type || '—'}</td>
+                    <td className="py-2 text-ink-300">
+                      {c.latitude != null && c.longitude != null ? `${c.latitude.toFixed(5)}, ${c.longitude.toFixed(5)}` : '—'}
+                    </td>
                     <td className="py-2 text-ink-500">{formatDateTime(c.created_at)}</td>
                   </tr>
                 ))}

@@ -1,10 +1,11 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import RecordingDetails from '../pages/RecordingDetails.jsx'
 
+let mockById = {}
 vi.mock('../hooks/useConstableLookup.js', () => ({
-  useConstableLookup: () => ({ label: (id) => `Constable ${id?.slice(0, 4)}` }),
+  useConstableLookup: () => ({ label: (id) => `Constable ${id?.slice(0, 4)}`, byId: mockById }),
 }))
 
 const mockGetRecording = vi.fn()
@@ -26,6 +27,10 @@ function renderAt(recordingId) {
 }
 
 describe('RecordingDetails chunk timeline', () => {
+  beforeEach(() => {
+    mockById = {}
+  })
+
   it('renders received chunks as ✓ and the real backend-reported gap as ✗ missing -- using actual response shapes, not fabricated data', async () => {
     mockGetRecording.mockResolvedValue({
       id: 'rec-1', constable_id: 'const-1', status: 'recording', trigger_type: 'emergency_button',
@@ -108,5 +113,61 @@ describe('RecordingDetails chunk timeline', () => {
     renderAt('rec-3')
 
     await waitFor(() => expect(screen.getByText('Not authorized to view this recording')).toBeInTheDocument())
+  })
+
+  it('renders device (linked), station, and per-chunk GPS when the backend actually returns them', async () => {
+    mockById = { 'const-1': { id: 'const-1', badge_number: 'B-100', station_name: 'Central Station' } }
+    mockGetRecording.mockResolvedValue({
+      id: 'rec-5', constable_id: 'const-1', device_id: 'device-99', status: 'recording', trigger_type: 'manual',
+      started_at: '2026-01-01T00:00:00Z', ended_at: null, incident_id: null,
+      chunk_count: 1, highest_chunk_number: 1, missing_chunk_numbers: [],
+    })
+    mockGetManifest.mockResolvedValue({
+      recording_session_id: 'rec-5', status: 'recording', is_complete: false,
+      highest_chunk_number: 1, missing_chunk_numbers: [],
+      chunks: [
+        {
+          id: 'c1', chunk_number: 1, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4',
+          is_last_chunk: true, upload_status: 'uploaded', created_at: '2026-01-01T00:00:01Z',
+          latitude: 17.4321, longitude: 78.5432, recorded_at: '2026-01-01T00:00:01Z',
+        },
+      ],
+    })
+
+    renderAt('rec-5')
+
+    await waitFor(() => expect(screen.getByText('Central Station')).toBeInTheDocument())
+    // shortId() truncates to 8 chars (see utils/format.js), so 'device-99' -> 'device-9'.
+    const deviceLink = screen.getByRole('link', { name: 'device-9' })
+    expect(deviceLink).toHaveAttribute('href', '/devices/device-99')
+    expect(screen.getByText('17.43210, 78.54320')).toBeInTheDocument()
+  })
+
+  it('omits device/station and shows the "—" placeholder for GPS when the backend has none of it -- never fabricated', async () => {
+    mockById = { 'const-1': { id: 'const-1', badge_number: 'B-100', station_name: null } }
+    mockGetRecording.mockResolvedValue({
+      id: 'rec-6', constable_id: 'const-1', device_id: null, status: 'recording', trigger_type: 'manual',
+      started_at: '2026-01-01T00:00:00Z', ended_at: null, incident_id: null,
+      chunk_count: 1, highest_chunk_number: 1, missing_chunk_numbers: [],
+    })
+    mockGetManifest.mockResolvedValue({
+      recording_session_id: 'rec-6', status: 'recording', is_complete: false,
+      highest_chunk_number: 1, missing_chunk_numbers: [],
+      chunks: [
+        {
+          id: 'c1', chunk_number: 1, file_size: 1024, duration_seconds: 2.0, mime_type: 'video/mp4',
+          is_last_chunk: true, upload_status: 'uploaded', created_at: '2026-01-01T00:00:01Z',
+          latitude: null, longitude: null, recorded_at: null,
+        },
+      ],
+    })
+
+    renderAt('rec-6')
+
+    await waitFor(() => expect(screen.getByText('Device')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: /devices\// })).not.toBeInTheDocument()
+    // No station line was fabricated -- the "—" placeholder is used instead.
+    const stationRow = screen.getByText('Station').closest('div')
+    expect(stationRow).toHaveTextContent('—')
   })
 })
