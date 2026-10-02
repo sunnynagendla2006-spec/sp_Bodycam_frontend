@@ -11,8 +11,8 @@ export async function listConstableLocations() {
   return data
 }
 
-export async function createConstable({ phone, badge_number }) {
-  const { data } = await client.post('/constables/', { phone, badge_number })
+export async function createConstable({ phone, badge_number, password }) {
+  const { data } = await client.post('/constables/', { phone, badge_number, password })
   return data
 }
 

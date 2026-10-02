@@ -137,13 +137,14 @@ function CreateConstableModal({ onClose, onCreated }) {
   const { notify } = useToast()
   const [phone, setPhone] = useState('')
   const [badge, setBadge] = useState('')
+  const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setSubmitting(true)
     try {
-      await createConstable({ phone, badge_number: badge })
+      await createConstable({ phone, badge_number: badge, password })
       onCreated()
     } catch (err) {
       notify(friendlyErrorMessage(err), { tone: 'error' })
@@ -163,6 +164,19 @@ function CreateConstableModal({ onClose, onCreated }) {
         <label className="mb-3 block text-sm">
           <span className="mb-1 block text-ink-300">Badge number</span>
           <input required value={badge} onChange={(e) => setBadge(e.target.value)} className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue" />
+        </label>
+        <label className="mb-3 block text-sm">
+          <span className="mb-1 block text-ink-300">Mobile app login password</span>
+          <input
+            required
+            minLength={8}
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Shared with the constable to log into the app"
+            className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
+          />
+          <span className="mt-1 block text-xs text-ink-400">At least 8 characters. The constable logs in with this phone number + password.</span>
         </label>
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-ink-300 hover:bg-base-700">
