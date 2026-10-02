@@ -1,8 +1,24 @@
+// Fixed to Asia/Kolkata (IST) regardless of the viewing machine's own
+// locale/timezone -- every constable, station, and control room operator
+// is in India, so times must read the same for everyone instead of
+// silently shifting with whatever timezone the browser happens to be set
+// to (the previous plain `toLocaleString()` had no timeZone, so it used
+// the browser's local one).
+const IST_FORMATTER = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true,
+})
+
 export function formatDateTime(value) {
   if (!value) return '—'
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString()
+  return `${IST_FORMATTER.format(d)} IST`
 }
 
 export function formatBytes(bytes) {

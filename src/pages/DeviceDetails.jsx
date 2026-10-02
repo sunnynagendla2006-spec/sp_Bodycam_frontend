@@ -47,7 +47,7 @@ export default function DeviceDetails() {
   const [commands, setCommands] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [confirming, setConfirming] = useState(null) // 'start_recording' | 'stop_recording' | 'start_live_stream' | 'stop_live_stream' | null
+  const [confirming, setConfirming] = useState(null) // 'start_recording' | 'stop_recording' | 'start_live_stream' | 'stop_live_stream' | 'switch_camera_front' | 'switch_camera_back' | null
   const [busy, setBusy] = useState(false)
   const [watchingSessionId, setWatchingSessionId] = useState(null)
 
@@ -222,9 +222,23 @@ export default function DeviceDetails() {
                 >
                   Stop recording
                 </button>
+                <button
+                  onClick={() => setConfirming('switch_camera_front')}
+                  className="rounded-lg bg-base-600/60 px-3 py-1.5 text-sm text-ink-100 hover:bg-base-600"
+                >
+                  Switch to front camera
+                </button>
+                <button
+                  onClick={() => setConfirming('switch_camera_back')}
+                  className="rounded-lg bg-base-600/60 px-3 py-1.5 text-sm text-ink-100 hover:bg-base-600"
+                >
+                  Switch to back camera
+                </button>
               </div>
               <p className="mt-2 text-xs text-ink-500">
                 A command being SENT does not mean it executed -- the device must acknowledge and report a result.
+                Switching camera only takes effect for the device's NEXT recording -- if one is active, it's stopped,
+                never rebound mid-recording.
               </p>
             </div>
           )}
@@ -318,6 +332,8 @@ export default function DeviceDetails() {
             stop_recording: 'Stop recording?',
             start_live_stream: 'Request live camera stream?',
             stop_live_stream: 'Stop live stream?',
+            switch_camera_front: 'Switch to front camera?',
+            switch_camera_back: 'Switch to back camera?',
           }[confirming]
         }
         message={
@@ -326,6 +342,8 @@ export default function DeviceDetails() {
             stop_recording: `Send a STOP_RECORDING command to ${constableLabel(device.constable_id)}'s device?`,
             start_live_stream: `Send a START_LIVE_STREAM command to ${constableLabel(device.constable_id)}'s device? Their camera will turn on and be visible live -- nothing is recorded.`,
             stop_live_stream: `Stop the live camera stream from ${constableLabel(device.constable_id)}'s device?`,
+            switch_camera_front: `Set ${constableLabel(device.constable_id)}'s device to use the FRONT camera for its next recording. If a recording is currently active, it will be stopped first -- the camera is never switched mid-recording.`,
+            switch_camera_back: `Set ${constableLabel(device.constable_id)}'s device to use the BACK camera for its next recording. If a recording is currently active, it will be stopped first -- the camera is never switched mid-recording.`,
           }[confirming]
         }
         confirmLabel={confirming === 'stop_live_stream' ? 'Stop stream' : 'Send command'}
