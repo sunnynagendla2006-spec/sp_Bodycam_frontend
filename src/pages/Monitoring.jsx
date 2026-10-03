@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Camera, Clock, MapPin, Radio } from 'lucide-react'
+import { Camera, Clock, MapPin, Radio, Video } from 'lucide-react'
 import { useOperations } from '../context/OperationsContext.jsx'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
@@ -20,7 +20,7 @@ const CARD_BORDER = {
 }
 
 export default function Monitoring() {
-  const { devices, recordings, loading, error, refresh } = useOperations()
+  const { devices, recordings, liveStreams, loading, error, refresh } = useOperations()
   const { label: constableLabel } = useConstableLookup()
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -29,6 +29,7 @@ export default function Monitoring() {
   if (error) return <ErrorState message={error} onRetry={refresh} />
 
   const recordingByDevice = Object.fromEntries(recordings.filter((r) => r.status === 'recording').map((r) => [r.device_id, r]))
+  const liveByDevice = Object.fromEntries((liveStreams || []).map((s) => [s.device_id, s]))
   const needle = search.trim().toLowerCase()
   const filtered = devices.filter((d) => {
     if (statusFilter && d.status !== statusFilter) return false
@@ -53,9 +54,10 @@ export default function Monitoring() {
       {filtered.length === 0 ? (
         <EmptyState icon={Camera} title="No cameras found" hint="Try a different search or filter." />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
           {filtered.map((d, i) => {
             const activeRecording = recordingByDevice[d.id]
+            const activeLive = liveByDevice[d.id]
             return (
               <Link
                 key={d.id}
@@ -73,20 +75,24 @@ export default function Monitoring() {
                   <StatusBadge status={d.status} />
                 </div>
 
-                {activeRecording && (
-                  <p className="mt-3 flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-800">
+                {/* One simple row: recording, live view, and battery -- the
+                    three things an operator scans a camera card for -- each
+                    as a small icon instead of separate labeled blocks. */}
+                <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line pt-4 text-sm">
+                  <span className={`inline-flex items-center gap-1.5 ${activeRecording ? 'font-medium text-signal-red' : 'text-ink-400'}`} title={activeRecording ? `Recording for ${formatElapsed(activeRecording.started_at)}` : 'Not recording'}>
                     <Radio className="h-4 w-4" aria-hidden="true" />
-                    Recording for {formatElapsed(activeRecording.started_at)}
-                  </p>
-                )}
+                    {activeRecording ? formatElapsed(activeRecording.started_at) : 'Not recording'}
+                  </span>
+                  <span className={`inline-flex items-center gap-1.5 ${activeLive ? 'font-medium text-signal-red' : 'text-ink-400'}`} title={activeLive ? 'Sharing live video' : 'Not sharing live video'}>
+                    <Video className="h-4 w-4" aria-hidden="true" />
+                    {activeLive ? 'Live' : 'Not live'}
+                  </span>
+                  <span className="inline-flex items-center text-ink-900">
+                    <Battery percent={d.battery_percent} charging={d.is_charging} />
+                  </span>
+                </div>
 
-                <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-4 text-sm">
-                  <div>
-                    <dt className="text-xs text-ink-500">Battery</dt>
-                    <dd className="mt-1 text-ink-900">
-                      <Battery percent={d.battery_percent} charging={d.is_charging} />
-                    </dd>
-                  </div>
+                <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-xs text-ink-500">Last active</dt>
                     <dd className="mt-1 flex items-center gap-1.5 text-ink-900">
@@ -94,7 +100,7 @@ export default function Monitoring() {
                       {formatRelativeTime(d.last_seen_at)}
                     </dd>
                   </div>
-                  <div className="col-span-2">
+                  <div>
                     <dt className="text-xs text-ink-500">Location</dt>
                     <dd className="mt-1 flex items-center gap-1.5 text-ink-900">
                       <MapPin className="h-4 w-4 text-ink-400" aria-hidden="true" />
