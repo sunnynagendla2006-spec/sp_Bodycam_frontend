@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Bell, Camera, CircleCheck, CircleDot, Clapperboard, Clock, Eye, MapPin, Radio, Square, SwitchCamera, Video, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
@@ -11,7 +11,6 @@ import { listDeviceCommands, issueCommand, cancelCommand } from '../api/commands
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, ConfirmDialog, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import LiveVideoView from '../components/LiveVideoView.jsx'
 import Battery from '../components/ui/Battery.jsx'
 import Button from '../components/ui/Button.jsx'
 import DataTable from '../components/ui/DataTable.jsx'
@@ -19,6 +18,13 @@ import { Card, CardHeader, Info, InfoGrid } from '../components/ui/Card.jsx'
 import { canIssueCommands } from '../utils/roles.js'
 import { formatDateTime, formatDateTimeShort, formatRelativeTime } from '../utils/format.js'
 import { alertTypeLabel, commandTypeLabel, friendlyFailure, statusLabel, triggerLabel } from '../utils/labels.js'
+
+// Lazy: pulls in the LiveKit video SDK (the single biggest dependency in
+// this page by far -- see the vite build's chunk-size warning), which is
+// only ever needed once an operator actually clicks "Watch live". Every
+// other visit to this page (by far the common case: just checking a
+// camera's battery/location/alerts) no longer has to download it at all.
+const LiveVideoView = lazy(() => import('../components/LiveVideoView.jsx'))
 
 const COMMAND_STAGES = ['pending', 'sent', 'acknowledged', 'executed']
 
@@ -141,6 +147,14 @@ export default function DeviceDetails() {
   const liveSession = liveStreams.find((s) => s.device_id === id)
   const openAlerts = deviceAlerts.filter((a) => a.status === 'open')
   const canControl = canIssueCommands(user?.role)
+  // An offline camera has no live connection to the backend at all, so a
+  // command sent to it just sits waiting (see
+  // mobile_app's command_listener_service.dart: it only ever gets
+  // delivered once the phone reconnects) -- that's especially misleading
+  // for "request live view", which the operator expects to work RIGHT
+  // NOW: it used to just spin on "Connecting…" forever with no
+  // explanation. Disabled here instead, with a plain reason shown.
+  const isOffline = device.status === 'offline'
 
   const DIALOGS = {
     start_recording: {
@@ -201,9 +215,11 @@ export default function DeviceDetails() {
         <div className="p-5">
           {!liveSession && (
             <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-ink-500">This camera is not sharing live video right now.</p>
+              <p className="text-sm text-ink-500">
+                {isOffline ? 'This camera is offline, so it cannot start a live view right now.' : 'This camera is not sharing live video right now.'}
+              </p>
               {canControl && (
-                <Button icon={Video} onClick={() => setConfirming('start_live_stream')}>
+                <Button icon={Video} disabled={isOffline} title={isOffline ? 'This camera is offline' : undefined} onClick={() => setConfirming('start_live_stream')}>
                   Request live view
                 </Button>
               )}
@@ -211,21 +227,30 @@ export default function DeviceDetails() {
           )}
 
           {liveSession && !watchingSessionId && (
-            <div className="flex flex-wrap gap-3">
-              <Button icon={Eye} onClick={() => setWatchingSessionId(liveSession.id)}>
-                Watch live
-              </Button>
-              {canControl && (
-                <Button variant="secondary" icon={Square} onClick={() => setConfirming('stop_live_stream')}>
-                  Stop live view
-                </Button>
+            <div className="space-y-3">
+              {isOffline && (
+                <p className="rounded-lg bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-800">
+                  This camera has gone offline since this live view started. Watching will most likely show nothing.
+                </p>
               )}
+              <div className="flex flex-wrap gap-3">
+                <Button icon={Eye} disabled={isOffline} title={isOffline ? 'This camera is offline' : undefined} onClick={() => setWatchingSessionId(liveSession.id)}>
+                  Watch live
+                </Button>
+                {canControl && (
+                  <Button variant="secondary" icon={Square} onClick={() => setConfirming('stop_live_stream')}>
+                    Stop live view
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
           {liveSession && watchingSessionId === liveSession.id && (
             <div className="max-w-2xl space-y-3">
-              <LiveVideoView sessionId={liveSession.id} onClose={() => setWatchingSessionId(null)} />
+              <Suspense fallback={<div className="flex aspect-video w-full items-center justify-center rounded-2xl border border-line bg-black/5 text-sm text-ink-500">Loading player…</div>}>
+                <LiveVideoView sessionId={liveSession.id} onClose={() => setWatchingSessionId(null)} />
+              </Suspense>
               {canControl && (
                 <Button variant="secondary" icon={Square} onClick={() => setConfirming('stop_live_stream')}>
                   Stop live view
@@ -313,17 +338,22 @@ export default function DeviceDetails() {
         <Card className="animate-rise-in">
           <CardHeader icon={Radio} title="Remote control" subtitle="Send an action to this camera" />
           <div className="p-5">
+            {isOffline && (
+              <p className="mb-4 rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-800">
+                This camera is offline. Actions are disabled here because they would not reach the phone right now.
+              </p>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Button variant="danger-soft" size="lg" icon={CircleDot} onClick={() => setConfirming('start_recording')}>
+              <Button variant="danger-soft" size="lg" icon={CircleDot} disabled={isOffline} onClick={() => setConfirming('start_recording')}>
                 Start recording
               </Button>
-              <Button variant="secondary" size="lg" icon={Square} onClick={() => setConfirming('stop_recording')}>
+              <Button variant="secondary" size="lg" icon={Square} disabled={isOffline} onClick={() => setConfirming('stop_recording')}>
                 Stop recording
               </Button>
-              <Button variant="secondary" size="lg" icon={SwitchCamera} onClick={() => setConfirming('switch_camera_front')}>
+              <Button variant="secondary" size="lg" icon={SwitchCamera} disabled={isOffline} onClick={() => setConfirming('switch_camera_front')}>
                 Front camera
               </Button>
-              <Button variant="secondary" size="lg" icon={SwitchCamera} onClick={() => setConfirming('switch_camera_back')}>
+              <Button variant="secondary" size="lg" icon={SwitchCamera} disabled={isOffline} onClick={() => setConfirming('switch_camera_back')}>
                 Back camera
               </Button>
             </div>

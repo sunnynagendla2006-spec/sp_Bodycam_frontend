@@ -13,6 +13,14 @@ import StatusBadge from './StatusBadge.jsx'
 // SFU handles fanning the same camera feed out to all of them. Nothing
 // here ever writes the video anywhere -- it's attached directly to a
 // <video> element and discarded on unmount/disconnect.
+// How long "Connecting…" is allowed to show with no video track before
+// treated as a real failure. Joining the LiveKit room itself succeeds
+// even when nobody is actually publishing (e.g. the camera is offline or
+// never started) -- without this, that left the UI spinning on
+// "Connecting…" forever with no way to tell the operator anything was
+// wrong.
+const NO_VIDEO_TIMEOUT_MS = 15000
+
 export default function LiveVideoView({ sessionId, onClose }) {
   const videoRef = useRef(null)
   const roomRef = useRef(null)
@@ -24,8 +32,16 @@ export default function LiveVideoView({ sessionId, onClose }) {
     const room = new Room()
     roomRef.current = room
 
+    const noVideoTimer = setTimeout(() => {
+      if (!cancelled) {
+        setStatus('error')
+        setError('No video received from the camera. It may be offline or not actually sharing video.')
+      }
+    }, NO_VIDEO_TIMEOUT_MS)
+
     function attachIfVideo(track) {
       if (track.kind === Track.Kind.Video && videoRef.current) {
+        clearTimeout(noVideoTimer)
         track.attach(videoRef.current)
         setStatus('live')
       }
@@ -49,6 +65,7 @@ export default function LiveVideoView({ sessionId, onClose }) {
         }
       } catch (err) {
         if (!cancelled) {
+          clearTimeout(noVideoTimer)
           setStatus('error')
           setError(friendlyErrorMessage(err))
         }
@@ -58,6 +75,7 @@ export default function LiveVideoView({ sessionId, onClose }) {
 
     return () => {
       cancelled = true
+      clearTimeout(noVideoTimer)
       room.disconnect()
     }
   }, [sessionId])
