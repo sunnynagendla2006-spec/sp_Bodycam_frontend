@@ -103,9 +103,9 @@ export default function AppShell() {
           sidebarOpen ? 'translate-x-0 shadow-pop' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center justify-between gap-3 px-5 py-3">
+        <div className="flex items-center justify-between gap-3 px-5 py-5">
           <div className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-white shadow-card">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-card">
               <Shield className="h-5 w-5" aria-hidden="true" />
             </span>
             <div>
@@ -123,10 +123,10 @@ export default function AppShell() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 pb-1.5 scrollbar-thin" aria-label="Main">
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-thin" aria-label="Main">
           {groups.map((group) => (
-            <div key={group.heading} className="mt-2 first:mt-0">
-              <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-ink-400">{group.heading}</p>
+            <div key={group.heading} className="mt-4 first:mt-0">
+              <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-ink-400">{group.heading}</p>
               <div className="space-y-0.5">
                 {group.items.map((item) => (
                   <NavLink
@@ -134,7 +134,7 @@ export default function AppShell() {
                     to={item.to}
                     end={item.end}
                     className={({ isActive }) =>
-                      `group relative flex items-center gap-3 rounded-xl px-3 py-1 text-sm font-medium transition-colors duration-150 ${
+                      `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
                         isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-canvas hover:text-ink-900'
                       }`
                     }
@@ -158,13 +158,13 @@ export default function AppShell() {
           ))}
         </nav>
 
-        <div className="border-t border-line p-1.5">
+        <div className="border-t border-line p-3">
           <NavLink
             to="/profile"
-            className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-1.5 transition-colors ${isActive ? 'bg-brand-50' : 'hover:bg-canvas'}`}
+            className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${isActive ? 'bg-brand-50' : 'hover:bg-canvas'}`}
           >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
-              <UserRound className="h-4 w-4" aria-hidden="true" />
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+              <UserRound className="h-[18px] w-[18px]" aria-hidden="true" />
             </span>
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium text-ink-900">{user?.phone}</span>
@@ -173,7 +173,7 @@ export default function AppShell() {
           </NavLink>
           <button
             onClick={handleLogout}
-            className="mt-0.5 flex w-full items-center gap-3 rounded-xl px-3 py-1.5 text-sm font-medium text-ink-500 transition-colors hover:bg-red-50 hover:text-signal-red"
+            className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-500 transition-colors hover:bg-red-50 hover:text-signal-red"
           >
             <LogOut className="h-5 w-5" aria-hidden="true" />
             Sign out
@@ -205,6 +205,9 @@ export default function AppShell() {
               {connected ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
               <span className="hidden sm:inline">{connected ? 'Updating live' : 'Reconnecting'}</span>
               <span className="sm:hidden">{connected ? 'Live' : 'Offline'}</span>
+            </span>
+            <span className="hidden text-sm text-ink-500 md:block">
+              <span className="font-medium text-ink-900">{user?.phone}</span> · {ROLE_LABELS[user?.role] || user?.role}
             </span>
           </div>
         </header>
