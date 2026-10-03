@@ -1,153 +1,173 @@
 import { Link } from 'react-router-dom'
+import { Bell, Camera, CircleCheck, Clock, Radio, TriangleAlert, Wifi, WifiOff } from 'lucide-react'
 import { useOperations } from '../context/OperationsContext.jsx'
+import { useAuth } from '../context/AuthContext.jsx'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import { formatDateTime, titleCase } from '../utils/format.js'
+import Battery from '../components/ui/Battery.jsx'
+import { Card, CardHeader, StatCard } from '../components/ui/Card.jsx'
+import { canViewOperations } from '../utils/roles.js'
+import { formatElapsed, formatRelativeTime } from '../utils/format.js'
+import { alertTypeLabel } from '../utils/labels.js'
 
-function StatCard({ label, value, tone }) {
-  const toneClass = { red: 'text-red-300', amber: 'text-amber-300', green: 'text-emerald-300', default: 'text-ink-100' }[tone || 'default']
-  return (
-    <div className="panel p-4">
-      <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</p>
-    </div>
-  )
+function greeting() {
+  const hour = Number(new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hour12: false, timeZone: 'Asia/Kolkata' }).format(new Date())) % 24
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
 }
 
-function elapsed(startedAt) {
-  if (!startedAt) return '—'
-  const ms = Date.now() - new Date(startedAt).getTime()
-  if (ms < 0) return '—'
-  const mins = Math.floor(ms / 60000)
-  const h = Math.floor(mins / 60)
-  const m = mins % 60
-  return h > 0 ? `${h}h ${m}m` : `${m}m`
-}
+const TODAY = () =>
+  new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' }).format(new Date())
 
 export default function Dashboard() {
+  const { user } = useAuth()
   const { devices, alerts, recordings, loading, error, refresh } = useOperations()
   const { label: constableLabel } = useConstableLookup()
 
+  if (!canViewOperations(user?.role)) {
+    return (
+      <div>
+        <PageHeader title={greeting()} subtitle={TODAY()} />
+        <EmptyState icon={Camera} title="Nothing to show here yet" hint="Use the menu to open the sections you have access to." />
+      </div>
+    )
+  }
   if (loading) return <LoadingSkeleton rows={6} />
   if (error) return <ErrorState message={error} onRetry={refresh} />
 
   const deviceById = Object.fromEntries(devices.map((d) => [d.id, d]))
   const activeRecordings = recordings.filter((r) => r.status === 'recording')
-  const criticalAlerts = alerts.filter((a) => a.status === 'open' && a.severity === 'critical')
+  const urgentAlerts = alerts.filter((a) => a.status === 'open' && a.severity === 'critical')
   const onlineCount = devices.filter((d) => d.status === 'online' || d.status === 'recording').length
-  const staleCount = devices.filter((d) => d.status === 'stale').length
   const offlineCount = devices.filter((d) => d.status === 'offline').length
+  const needAttention = urgentAlerts.length + offlineCount
 
   return (
     <div>
-      <PageHeader title="Control Room" subtitle="Live operational status across all authorized devices and constables" />
+      <PageHeader
+        title={greeting()}
+        subtitle={TODAY()}
+      />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Online Devices" value={onlineCount} tone="green" />
-        <StatCard label="Active Recordings" value={activeRecordings.length} tone={activeRecordings.length > 0 ? 'red' : 'default'} />
-        <StatCard label="Critical Alerts" value={criticalAlerts.length} tone={criticalAlerts.length > 0 ? 'red' : 'default'} />
-        <StatCard label="Offline Devices" value={offlineCount} tone={offlineCount > 0 ? 'amber' : 'default'} />
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Stale" value={staleCount} tone={staleCount > 0 ? 'amber' : 'default'} />
-        <StatCard label="Total Devices" value={devices.length} />
-        <StatCard label="Open Alerts" value={alerts.filter((a) => a.status === 'open').length} />
+      {needAttention > 0 ? (
+        <Link
+          to={urgentAlerts.length > 0 ? '/alerts' : '/monitoring'}
+          className="group mb-6 flex animate-rise-in items-center gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 transition-colors hover:bg-red-100/70"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100 text-signal-red">
+            <TriangleAlert className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-red-900">
+              {urgentAlerts.length > 0 && `${urgentAlerts.length} urgent ${urgentAlerts.length === 1 ? 'alert needs' : 'alerts need'} your attention`}
+              {urgentAlerts.length > 0 && offlineCount > 0 && ' and '}
+              {offlineCount > 0 && `${offlineCount} ${offlineCount === 1 ? 'camera is' : 'cameras are'} offline`}
+            </p>
+            <p className="text-sm text-red-800/80">Tap to take a look.</p>
+          </div>
+        </Link>
+      ) : (
+        <div className="mb-6 flex animate-rise-in items-center gap-4 rounded-2xl border border-green-200 bg-green-50 p-4">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-green-100 text-signal-green">
+            <CircleCheck className="h-5 w-5" aria-hidden="true" />
+          </span>
+          <div>
+            <p className="font-semibold text-green-900">Everything looks normal</p>
+            <p className="text-sm text-green-800/80">No urgent alerts and no cameras offline.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard index={0} icon={Wifi} tone="green" label="Cameras online" value={onlineCount} hint={`out of ${devices.length}`} to="/monitoring" />
+        <StatCard index={1} icon={Radio} tone={activeRecordings.length > 0 ? 'red' : 'neutral'} label="Recording right now" value={activeRecordings.length} to="/recordings" />
+        <StatCard index={2} icon={Bell} tone={urgentAlerts.length > 0 ? 'red' : 'neutral'} label="Urgent alerts" value={urgentAlerts.length} to="/alerts" />
+        <StatCard index={3} icon={WifiOff} tone={offlineCount > 0 ? 'amber' : 'neutral'} label="Cameras offline" value={offlineCount} to="/monitoring" />
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
-        <section className="panel p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-ink-100">Active emergency recordings</h2>
-            <Link to="/recordings" className="text-sm text-sky-300 hover:underline">View all</Link>
-          </div>
-          {activeRecordings.length === 0 ? (
-            <EmptyState title="No active recordings" hint="Recordings will appear here the moment a constable starts one." />
-          ) : (
-            <ul className="space-y-2">
-              {activeRecordings.map((r) => {
-                const device = deviceById[r.device_id]
-                return (
-                  <li key={r.id} className="rounded-lg border border-signal-red/30 bg-signal-red/5 p-3 text-sm">
-                    <div className="flex items-center justify-between">
-                      <Link to={`/recordings/${r.id}`} className="font-medium text-red-200 hover:underline">
-                        🔴 {constableLabel(r.constable_id)}
+        <Card className="animate-rise-in">
+          <CardHeader icon={Radio} title="Recording right now" to="/recordings" />
+          <div className="p-4">
+            {activeRecordings.length === 0 ? (
+              <EmptyState icon={Radio} title="No one is recording" hint="Recordings will show up here as soon as a constable starts one." />
+            ) : (
+              <ul className="space-y-3">
+                {activeRecordings.map((r, i) => {
+                  const device = deviceById[r.device_id]
+                  return (
+                    <li key={r.id} style={{ '--i': i }} className="stagger animate-rise-in">
+                      <Link
+                        to={`/recordings/${r.id}`}
+                        className="card-hover flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50/60 p-4"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-ink-900">{constableLabel(r.constable_id)}</p>
+                          <p className="mt-1 flex items-center gap-1.5 text-sm text-ink-500">
+                            <Clock className="h-4 w-4" aria-hidden="true" />
+                            Recording for {formatElapsed(r.started_at)}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5 text-sm">
+                          <StatusBadge status="recording" />
+                          {device && <Battery percent={device.battery_percent} charging={device.is_charging} />}
+                        </div>
                       </Link>
-                      <StatusBadge status={r.trigger_type} />
-                    </div>
-                    <p className="mt-1 text-xs text-ink-500">
-                      Started {formatDateTime(r.started_at)} · elapsed {elapsed(r.started_at)} · chunk {r.highest_chunk_number ?? 0}
-                      {device && <> · battery {device.battery_percent != null ? `${device.battery_percent}%` : '—'}</>}
-                    </p>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
-
-        <section className="panel p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-semibold text-ink-100">Critical alerts</h2>
-            <Link to="/alerts" className="text-sm text-sky-300 hover:underline">View all</Link>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
           </div>
-          {criticalAlerts.length === 0 ? (
-            <EmptyState title="No critical alerts" hint="All monitored devices are within normal parameters." />
-          ) : (
-            <ul className="space-y-2">
-              {criticalAlerts.slice(0, 8).map((a) => (
-                <li key={a.id} className="rounded-lg border border-signal-red/30 bg-signal-red/5 p-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-red-200">{titleCase(a.type)}</span>
-                    <StatusBadge status={a.status} />
-                  </div>
-                  <p className="mt-1 text-xs text-ink-500">
-                    {constableLabel(a.constable_id)} · {formatDateTime(a.created_at)}
-                  </p>
-                  {a.message && <p className="mt-1 text-xs text-ink-300">{a.message}</p>}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        </Card>
+
+        <Card className="animate-rise-in">
+          <CardHeader icon={Bell} title="Urgent alerts" to="/alerts" />
+          <div className="p-4">
+            {urgentAlerts.length === 0 ? (
+              <EmptyState icon={CircleCheck} title="No urgent alerts" hint="All cameras are working as expected." />
+            ) : (
+              <ul className="space-y-3">
+                {urgentAlerts.slice(0, 6).map((a, i) => (
+                  <li key={a.id} style={{ '--i': i }} className="stagger animate-rise-in rounded-xl border border-red-200 bg-red-50/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="font-semibold text-ink-900">{alertTypeLabel(a.type)}</p>
+                      <span className="shrink-0 text-sm text-ink-500">{formatRelativeTime(a.created_at)}</span>
+                    </div>
+                    <p className="mt-1 text-sm text-ink-700">{constableLabel(a.constable_id)}</p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
       </div>
 
-      <section className="panel mt-6 p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-ink-100">Live device status</h2>
-          <Link to="/monitoring" className="text-sm text-sky-300 hover:underline">Open live monitoring</Link>
-        </div>
+      <Card className="mt-6 animate-rise-in">
+        <CardHeader icon={Camera} title="Body cameras" subtitle="Latest status of each camera" to="/monitoring" linkLabel="See all" />
         {devices.length === 0 ? (
-          <EmptyState title="No devices registered yet" />
-        ) : (
-          <div className="overflow-x-auto scrollbar-thin">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs uppercase text-ink-500">
-                  <th className="pb-2">Constable</th>
-                  <th className="pb-2">Status</th>
-                  <th className="pb-2">Battery</th>
-                  <th className="pb-2">Last seen</th>
-                </tr>
-              </thead>
-              <tbody>
-                {devices.slice(0, 8).map((d) => (
-                  <tr key={d.id} className="border-t border-base-700">
-                    <td className="py-2">
-                      <Link to={`/devices/${d.id}`} className="text-sky-300 hover:underline">
-                        {constableLabel(d.constable_id)}
-                      </Link>
-                    </td>
-                    <td className="py-2"><StatusBadge status={d.status} /></td>
-                    <td className="py-2 text-ink-300">{d.battery_percent != null ? `${d.battery_percent}%${d.is_charging ? ' ⚡' : ''}` : '—'}</td>
-                    <td className="py-2 text-ink-500">{formatDateTime(d.last_seen_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="p-4">
+            <EmptyState icon={Camera} title="No cameras added yet" />
           </div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {devices.slice(0, 6).map((d) => (
+              <li key={d.id}>
+                <Link to={`/devices/${d.id}`} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-5 py-3.5 transition-colors hover:bg-brand-50/40">
+                  <span className="font-medium text-ink-900">{constableLabel(d.constable_id)}</span>
+                  <span className="flex items-center gap-4 text-sm text-ink-500">
+                    <span className="hidden sm:inline">{formatRelativeTime(d.last_seen_at)}</span>
+                    <Battery percent={d.battery_percent} charging={d.is_charging} />
+                    <StatusBadge status={d.status} />
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
-      </section>
+      </Card>
     </div>
   )
 }

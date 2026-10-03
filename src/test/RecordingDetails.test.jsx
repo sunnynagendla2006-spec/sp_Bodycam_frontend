@@ -59,7 +59,7 @@ describe('RecordingDetails chunk timeline', () => {
     // A real playback control is rendered (the uploaded chunks, not the
     // missing one, and never a claim of a continuous/live stream -- it's
     // chunk-by-chunk, starting at chunk 1 of the 4 actually uploaded).
-    expect(screen.getByText('Chunk 1 (1 of 4)')).toBeInTheDocument()
+    expect(screen.getByText('Part 1 of 4')).toBeInTheDocument()
   })
 
   it('renders an actual playable <video> for the first uploaded chunk, and advances to the next on request', async () => {
@@ -79,13 +79,13 @@ describe('RecordingDetails chunk timeline', () => {
 
     renderAt('rec-4')
 
-    await waitFor(() => expect(screen.getByText('Chunk 1 (1 of 2)')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Part 1 of 2')).toBeInTheDocument())
     const video = document.querySelector('video')
     expect(video).toBeTruthy()
     expect(video.src).toContain('/recordings/rec-4/chunks/1/stream')
 
-    screen.getByText('Next →').click()
-    await waitFor(() => expect(screen.getByText('Chunk 2 (2 of 2) · last chunk')).toBeInTheDocument())
+    screen.getByRole('button', { name: /next part/i }).click()
+    await waitFor(() => expect(screen.getByText('Part 2 of 2 · last part')).toBeInTheDocument())
     expect(document.querySelector('video').src).toContain('/recordings/rec-4/chunks/2/stream')
   })
 
@@ -137,8 +137,7 @@ describe('RecordingDetails chunk timeline', () => {
     renderAt('rec-5')
 
     await waitFor(() => expect(screen.getByText('Central Station')).toBeInTheDocument())
-    // shortId() truncates to 8 chars (see utils/format.js), so 'device-99' -> 'device-9'.
-    const deviceLink = screen.getByRole('link', { name: 'device-9' })
+    const deviceLink = screen.getByRole('link', { name: 'View camera' })
     expect(deviceLink).toHaveAttribute('href', '/devices/device-99')
     expect(screen.getByText('17.43210, 78.54320')).toBeInTheDocument()
   })
@@ -164,8 +163,8 @@ describe('RecordingDetails chunk timeline', () => {
 
     renderAt('rec-6')
 
-    await waitFor(() => expect(screen.getByText('Device')).toBeInTheDocument())
-    expect(screen.queryByRole('link', { name: /devices\// })).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Camera')).toBeInTheDocument())
+    expect(screen.queryByRole('link', { name: 'View camera' })).not.toBeInTheDocument()
     // No station line was fabricated -- the "—" placeholder is used instead.
     const stationRow = screen.getByText('Station').closest('div')
     expect(stationRow).toHaveTextContent('—')

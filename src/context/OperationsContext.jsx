@@ -7,7 +7,6 @@ import { listAlerts } from '../api/alerts.js'
 import { listRecordings } from '../api/recordings.js'
 import { listAllCommands } from '../api/commands.js'
 import { listActiveLiveStreams } from '../api/liveStream.js'
-import { titleCase } from '../utils/format.js'
 
 const OperationsContext = createContext(null)
 
@@ -23,6 +22,15 @@ const NOTIFY_EVENTS = new Set([
   'command.failed',
   'alert.created',
 ])
+
+// What the operator reads in the pop-up for each of those events.
+const EVENT_MESSAGES = {
+  'battery.critical': 'A camera battery is almost empty',
+  'device.offline': 'A camera went offline',
+  'recording.device_offline': 'A camera went offline during a recording',
+  'command.failed': 'A remote action failed',
+  'alert.created': 'New alert',
+}
 
 // Events that mean "a device's live status/battery/location may have
 // changed" -- payload shape confirmed against _device_summary /
@@ -157,8 +165,8 @@ export function OperationsProvider({ children }) {
       if (ALERT_TOUCHING_EVENTS.has(evt.event)) scheduleRefetch('alerts')
 
       if (NOTIFY_EVENTS.has(evt.event)) {
-        const label = titleCase(evt.event)
-        const detail = evt.data?.message || evt.data?.device_identifier || evt.data?.command_type || ''
+        const label = EVENT_MESSAGES[evt.event] || 'New update'
+        const detail = evt.data?.message || ''
         notify(detail ? `${label}: ${detail}` : label, {
           tone: evt.event.includes('critical') || evt.event === 'device.offline' || evt.event === 'recording.device_offline' ? 'error' : 'info',
           duration: 6000,

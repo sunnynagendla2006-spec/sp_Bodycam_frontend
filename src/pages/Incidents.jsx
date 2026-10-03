@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { BadgeCheck, Ban, FileText, Flag, Plus, Send } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import {
@@ -11,10 +12,16 @@ import {
   dispatchIncident,
 } from '../api/incidents.js'
 import { friendlyErrorMessage } from '../api/client.js'
-import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
+import { LoadingSkeleton, ErrorState, EmptyState, PageHeader, ConfirmDialog } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import Button from '../components/ui/Button.jsx'
+import DataTable from '../components/ui/DataTable.jsx'
+import { Field } from '../components/ui/Form.jsx'
+import Modal from '../components/ui/Modal.jsx'
+import SearchInput from '../components/ui/SearchInput.jsx'
 import { canCreateIncident, canVerifyIncident, canDispatch } from '../utils/roles.js'
-import { formatDateTime } from '../utils/format.js'
+import { formatDateTimeShort } from '../utils/format.js'
+import { statusLabel } from '../utils/labels.js'
 
 const STATUS_OPTIONS = ['new', 'verified', 'rejected', 'assigned', 'en_route', 'arrived', 'resolved', 'closed', 'needs_review']
 
@@ -28,6 +35,7 @@ export default function Incidents() {
   const [statusFilter, setStatusFilter] = useState('')
   const [showCreate, setShowCreate] = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [reasonFor, setReasonFor] = useState(null) // { id, kind: 'reject' | 'review' }
 
   async function load() {
     setLoading(true)
@@ -70,49 +78,76 @@ export default function Incidents() {
     }
   }
 
-  async function handleReject(id) {
-    const reason = window.prompt('Rejection reason (optional):') ?? ''
-    await runAction(id, () => rejectIncident(id, reason), 'Incident rejected')
+  async function confirmReason(reason) {
+    const { id, kind } = reasonFor
+    setReasonFor(null)
+    if (kind === 'reject') await runAction(id, () => rejectIncident(id, reason), 'Incident rejected')
+    else await runAction(id, () => flagIncidentNeedsReview(id, reason), 'Incident marked for review')
   }
 
-  async function handleNeedsReview(id) {
-    const reason = window.prompt('Reason for flagging (optional):') ?? ''
-    await runAction(id, () => flagIncidentNeedsReview(id, reason), 'Incident flagged for review')
-  }
+  const columns = [
+    {
+      key: 'id',
+      header: 'Incident',
+      primary: true,
+      cell: (i) => (
+        <Link to={`/incidents/${i.id}`} className="text-brand-600 hover:text-brand-800 hover:underline">
+          {i.display_id || 'Incident'}
+        </Link>
+      ),
+    },
+    { key: 'status', header: 'Status', cell: (i) => <StatusBadge status={i.status} /> },
+    { key: 'description', header: 'What happened', cell: (i) => <span className="line-clamp-2 max-w-sm text-ink-700">{i.description || '—'}</span> },
+    { key: 'created', header: 'Reported', cell: (i) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(i.created_at)}</span> },
+    {
+      key: 'actions',
+      header: '',
+      cell: (i) => (
+        <div className="flex flex-wrap justify-end gap-2 md:justify-start">
+          {canVerifyIncident(user?.role) && i.status === 'new' && (
+            <>
+              <Button variant="secondary" size="sm" icon={BadgeCheck} disabled={busyId === i.id} onClick={() => runAction(i.id, verifyIncident, 'Incident verified')}>
+                Verify
+              </Button>
+              <Button variant="danger-soft" size="sm" icon={Ban} disabled={busyId === i.id} onClick={() => setReasonFor({ id: i.id, kind: 'reject' })}>
+                Reject
+              </Button>
+              <Button variant="ghost" size="sm" icon={Flag} disabled={busyId === i.id} onClick={() => setReasonFor({ id: i.id, kind: 'review' })}>
+                Needs review
+              </Button>
+            </>
+          )}
+          {canDispatch(user?.role) && i.status === 'verified' && (
+            <Button size="sm" icon={Send} disabled={busyId === i.id} onClick={() => runAction(i.id, dispatchIncident, 'Dispatch requested')}>
+              Dispatch
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div>
       <PageHeader
         title="Incidents"
-        subtitle="Role-scoped list from the backend -- you only see incidents you're authorized to view"
+        subtitle="Reports of things that happened, and what is being done about them"
         actions={
           canCreateIncident(user?.role) && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              + New incident
-            </button>
+            <Button icon={Plus} onClick={() => setShowCreate(true)}>
+              New incident
+            </Button>
           )
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search description or ID…"
-          className="w-64 rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100 outline-none focus:border-signal-blue"
-        />
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100 outline-none focus:border-signal-blue"
-        >
-          <option value="">All statuses</option>
+      <div className="mb-5 grid gap-3 sm:grid-cols-[minmax(0,24rem)_14rem]">
+        <SearchInput value={search} onChange={setSearch} placeholder="Search incidents" />
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="input" aria-label="Filter by status">
+          <option value="">Any status</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
-              {s.replace(/_/g, ' ')}
+              {statusLabel(s)}
             </option>
           ))}
         </select>
@@ -123,75 +158,9 @@ export default function Incidents() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : filtered.length === 0 ? (
-        <EmptyState title="No incidents match" hint="Try clearing filters, or create a new incident." />
+        <EmptyState icon={FileText} title="No incidents found" hint="Try clearing the search or filter, or create a new incident." />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">ID</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Description</th>
-                <th className="p-2">Created</th>
-                <th className="p-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((i) => (
-                <tr key={i.id} className="border-t border-base-700">
-                  <td className="p-2">
-                    <Link to={`/incidents/${i.id}`} className="font-medium text-sky-300 hover:underline">
-                      {i.display_id || i.id.slice(0, 8)}
-                    </Link>
-                  </td>
-                  <td className="p-2">
-                    <StatusBadge status={i.status} />
-                  </td>
-                  <td className="max-w-sm truncate p-2 text-ink-300">{i.description || '—'}</td>
-                  <td className="p-2 text-ink-500">{formatDateTime(i.created_at)}</td>
-                  <td className="p-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      {canVerifyIncident(user?.role) && i.status === 'new' && (
-                        <>
-                          <button
-                            disabled={busyId === i.id}
-                            onClick={() => runAction(i.id, verifyIncident, 'Incident verified')}
-                            className="rounded-md bg-signal-green/15 px-2 py-1 text-xs text-emerald-300 hover:bg-signal-green/25 disabled:opacity-50"
-                          >
-                            Verify
-                          </button>
-                          <button
-                            disabled={busyId === i.id}
-                            onClick={() => handleReject(i.id)}
-                            className="rounded-md bg-signal-red/15 px-2 py-1 text-xs text-red-300 hover:bg-signal-red/25 disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                          <button
-                            disabled={busyId === i.id}
-                            onClick={() => handleNeedsReview(i.id)}
-                            className="rounded-md bg-signal-violet/15 px-2 py-1 text-xs text-violet-300 hover:bg-signal-violet/25 disabled:opacity-50"
-                          >
-                            Needs review
-                          </button>
-                        </>
-                      )}
-                      {canDispatch(user?.role) && i.status === 'verified' && (
-                        <button
-                          disabled={busyId === i.id}
-                          onClick={() => runAction(i.id, dispatchIncident, 'Dispatch attempted')}
-                          className="rounded-md bg-signal-blue/15 px-2 py-1 text-xs text-sky-300 hover:bg-signal-blue/25 disabled:opacity-50"
-                        >
-                          Dispatch
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={filtered} />
       )}
 
       {showCreate && (
@@ -204,6 +173,17 @@ export default function Incidents() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!reasonFor}
+        title={reasonFor?.kind === 'reject' ? 'Reject this incident?' : 'Mark this incident for review?'}
+        message={reasonFor?.kind === 'reject' ? 'This incident will be marked as rejected.' : 'It will be flagged for a closer look.'}
+        reasonLabel="Reason (optional)"
+        confirmLabel={reasonFor?.kind === 'reject' ? 'Reject' : 'Mark for review'}
+        tone={reasonFor?.kind === 'reject' ? 'danger' : 'default'}
+        onCancel={() => setReasonFor(null)}
+        onConfirm={confirmReason}
+      />
     </div>
   )
 }
@@ -229,56 +209,34 @@ function CreateIncidentModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <form onSubmit={handleSubmit} className="panel w-full max-w-md p-5">
-        <h2 className="mb-4 text-base font-semibold text-ink-100">Create incident</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">
-            <span className="mb-1 block text-ink-300">Latitude</span>
-            <input
-              type="number"
-              step="any"
-              required
-              value={lat}
-              onChange={(e) => setLat(e.target.value)}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            />
-          </label>
-          <label className="text-sm">
-            <span className="mb-1 block text-ink-300">Longitude</span>
-            <input
-              type="number"
-              step="any"
-              required
-              value={lon}
-              onChange={(e) => setLon(e.target.value)}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            />
-          </label>
-          <label className="col-span-2 text-sm">
-            <span className="mb-1 block text-ink-300">Description</span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What's happening?"
-              rows={3}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            />
-          </label>
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-ink-300 hover:bg-base-700">
+    <Modal
+      title="New incident"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="submit" form="create-incident" loading={submitting}>
             {submitting ? 'Creating…' : 'Create incident'}
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <form id="create-incident" onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <Field label="What is happening?">
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the incident" rows={3} className="input" />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Latitude">
+            <input type="number" step="any" required value={lat} onChange={(e) => setLat(e.target.value)} className="input" />
+          </Field>
+          <Field label="Longitude">
+            <input type="number" step="any" required value={lon} onChange={(e) => setLon(e.target.value)} className="input" />
+          </Field>
         </div>
+        <p className="text-xs text-ink-500">The place where it happened. It is used to find the nearest police station.</p>
       </form>
-    </div>
+    </Modal>
   )
 }

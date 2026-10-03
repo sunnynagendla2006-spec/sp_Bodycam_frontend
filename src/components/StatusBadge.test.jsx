@@ -31,17 +31,17 @@ describe('StatusBadge', () => {
 
   it('renders alert severity/status correctly: open=red (needs attention), resolved should not also be red', () => {
     render(<StatusBadge status="open" />)
-    expect(screen.getByText('open')).toBeInTheDocument()
+    expect(screen.getByText('Open')).toBeInTheDocument()
   })
 
   it('falls back to a neutral tone for an unrecognized status rather than crashing', () => {
     const { container } = render(<StatusBadge status="some_future_status_not_yet_mapped" />)
-    expect(container.querySelector('span')?.className).toContain('base-600')
-    expect(screen.getByText('some future status not yet mapped')).toBeInTheDocument()
+    expect(container.querySelector('span')?.className).toContain('slate-100')
+    expect(screen.getByText('Some future status not yet mapped')).toBeInTheDocument()
   })
 
   it('handles a missing status gracefully', () => {
     render(<StatusBadge status={undefined} />)
-    expect(screen.getByText('unknown')).toBeInTheDocument()
+    expect(screen.getByText('Unknown')).toBeInTheDocument()
   })
 })

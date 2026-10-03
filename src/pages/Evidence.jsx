@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react'
+import { Archive, BadgeCheck, Ban, Download, Eye, FolderOpen, Plus, Upload } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { listEvidence, uploadEvidence, verifyEvidence, rejectEvidence, archiveEvidence, evidenceStreamUrl, downloadEvidence } from '../api/evidence.js'
 import { listIncidents } from '../api/incidents.js'
 import { friendlyErrorMessage } from '../api/client.js'
-import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
+import { LoadingSkeleton, ErrorState, EmptyState, PageHeader, ConfirmDialog } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import Button from '../components/ui/Button.jsx'
+import DataTable from '../components/ui/DataTable.jsx'
+import { Field } from '../components/ui/Form.jsx'
+import Modal from '../components/ui/Modal.jsx'
 import { canUploadEvidence, canVerifyEvidence } from '../utils/roles.js'
-import { formatBytes, formatDateTime } from '../utils/format.js'
+import { formatBytes, formatDateTimeShort } from '../utils/format.js'
+
+const TYPE_LABELS = { photo: 'Photo', audio: 'Audio', video: 'Video' }
 
 export default function Evidence() {
   const { user } = useAuth()
@@ -19,6 +26,7 @@ export default function Evidence() {
   const [showUpload, setShowUpload] = useState(false)
   const [preview, setPreview] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [rejecting, setRejecting] = useState(null)
 
   async function load() {
     setLoading(true)
@@ -51,19 +59,71 @@ export default function Evidence() {
     }
   }
 
+  const incidentName = (id) => incidents.find((i) => i.id === id)?.display_id || '—'
+  const canVerify = canVerifyEvidence(user?.role)
+
+  const columns = [
+    {
+      key: 'file',
+      header: 'File',
+      primary: true,
+      cell: (m) => (
+        <button onClick={() => setPreview(m)} className="max-w-[16rem] truncate text-left text-brand-600 hover:text-brand-800 hover:underline">
+          {m.original_filename || TYPE_LABELS[m.type] || m.type}
+        </button>
+      ),
+    },
+    { key: 'type', header: 'Kind', cell: (m) => TYPE_LABELS[m.type] || m.type || '—' },
+    { key: 'status', header: 'Status', cell: (m) => <StatusBadge status={m.upload_status} /> },
+    { key: 'incident', header: 'Incident', cell: (m) => incidentName(m.incident_id) },
+    { key: 'size', header: 'Size', cell: (m) => <span className="text-ink-500">{formatBytes(m.file_size)}</span> },
+    { key: 'uploaded', header: 'Added', cell: (m) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(m.timestamp)}</span> },
+    {
+      key: 'actions',
+      header: '',
+      cell: (m) => (
+        <div className="flex flex-wrap justify-end gap-2 md:justify-start">
+          <Button variant="secondary" size="sm" icon={Eye} onClick={() => setPreview(m)}>
+            Open
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={Download}
+            onClick={() => downloadEvidence(m.id, m.original_filename).catch((err) => notify(friendlyErrorMessage(err), { tone: 'error' }))}
+          >
+            Download
+          </Button>
+          {canVerify && m.upload_status === 'uploaded' && (
+            <>
+              <Button size="sm" icon={BadgeCheck} disabled={busyId === m.id} onClick={() => runAction(m.id, () => verifyEvidence(m.id), 'Evidence verified')}>
+                Verify
+              </Button>
+              <Button variant="danger-soft" size="sm" icon={Ban} disabled={busyId === m.id} onClick={() => setRejecting(m)}>
+                Reject
+              </Button>
+            </>
+          )}
+          {canVerify && m.upload_status === 'verified' && (
+            <Button variant="ghost" size="sm" icon={Archive} disabled={busyId === m.id} onClick={() => runAction(m.id, () => archiveEvidence(m.id), 'Evidence archived')}>
+              Archive
+            </Button>
+          )}
+        </div>
+      ),
+    },
+  ]
+
   return (
     <div>
       <PageHeader
         title="Evidence"
-        subtitle="Upload, stream, verify, reject, or archive according to your role"
+        subtitle="Photos, audio and video attached to incidents"
         actions={
           canUploadEvidence(user?.role) && (
-            <button
-              onClick={() => setShowUpload(true)}
-              className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500"
-            >
-              + Upload evidence
-            </button>
+            <Button icon={Plus} onClick={() => setShowUpload(true)}>
+              Add evidence
+            </Button>
           )
         }
       />
@@ -73,84 +133,9 @@ export default function Evidence() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : items.length === 0 ? (
-        <EmptyState title="No evidence available" hint="Evidence you're authorized to see will appear here." />
+        <EmptyState icon={FolderOpen} title="No evidence yet" hint="Evidence you have access to will show up here." />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">File</th>
-                <th className="p-2">Type</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Size</th>
-                <th className="p-2">Incident</th>
-                <th className="p-2">Uploaded</th>
-                <th className="p-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((m) => (
-                <tr key={m.id} className="border-t border-base-700">
-                  <td className="p-2">
-                    <button onClick={() => setPreview(m)} className="font-medium text-sky-300 hover:underline">
-                      {m.original_filename || m.type}
-                    </button>
-                  </td>
-                  <td className="p-2 text-ink-300">{m.mime_type || m.type}</td>
-                  <td className="p-2">
-                    <StatusBadge status={m.upload_status} />
-                  </td>
-                  <td className="p-2 text-ink-500">{formatBytes(m.file_size)}</td>
-                  <td className="p-2 font-mono text-xs text-ink-500">{m.incident_id?.slice(0, 8)}</td>
-                  <td className="p-2 text-ink-500">{formatDateTime(m.timestamp)}</td>
-                  <td className="p-2">
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        onClick={() => setPreview(m)}
-                        className="rounded-md bg-base-600/50 px-2 py-1 text-xs text-ink-100 hover:bg-base-600"
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => downloadEvidence(m.id, m.original_filename).catch((err) => notify(friendlyErrorMessage(err), { tone: 'error' }))}
-                        className="rounded-md bg-base-600/50 px-2 py-1 text-xs text-ink-100 hover:bg-base-600"
-                      >
-                        Download
-                      </button>
-                      {canVerifyEvidence(user?.role) && m.upload_status === 'uploaded' && (
-                        <>
-                          <button
-                            disabled={busyId === m.id}
-                            onClick={() => runAction(m.id, () => verifyEvidence(m.id), 'Evidence verified')}
-                            className="rounded-md bg-signal-green/15 px-2 py-1 text-xs text-emerald-300 hover:bg-signal-green/25 disabled:opacity-50"
-                          >
-                            Verify
-                          </button>
-                          <button
-                            disabled={busyId === m.id}
-                            onClick={() => runAction(m.id, () => rejectEvidence(m.id, window.prompt('Rejection reason (optional):') || ''), 'Evidence rejected')}
-                            className="rounded-md bg-signal-red/15 px-2 py-1 text-xs text-red-300 hover:bg-signal-red/25 disabled:opacity-50"
-                          >
-                            Reject
-                          </button>
-                        </>
-                      )}
-                      {canVerifyEvidence(user?.role) && m.upload_status === 'verified' && (
-                        <button
-                          disabled={busyId === m.id}
-                          onClick={() => runAction(m.id, () => archiveEvidence(m.id), 'Evidence archived')}
-                          className="rounded-md bg-base-600/50 px-2 py-1 text-xs text-ink-100 hover:bg-base-600 disabled:opacity-50"
-                        >
-                          Archive
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={items} />
       )}
 
       {showUpload && (
@@ -159,13 +144,28 @@ export default function Evidence() {
           onClose={() => setShowUpload(false)}
           onUploaded={async () => {
             setShowUpload(false)
-            notify('Evidence uploaded', { tone: 'success' })
+            notify('Evidence added', { tone: 'success' })
             await load()
           }}
         />
       )}
 
       {preview && <PreviewModal item={preview} onClose={() => setPreview(null)} />}
+
+      <ConfirmDialog
+        open={!!rejecting}
+        title="Reject this evidence?"
+        message={`${rejecting?.original_filename || 'This file'} will be marked as rejected.`}
+        reasonLabel="Reason (optional)"
+        confirmLabel="Reject"
+        tone="danger"
+        onCancel={() => setRejecting(null)}
+        onConfirm={(reason) => {
+          const target = rejecting
+          setRejecting(null)
+          runAction(target.id, () => rejectEvidence(target.id, reason), 'Evidence rejected')
+        }}
+      />
     </div>
   )
 }
@@ -203,76 +203,58 @@ function UploadModal({ incidents, onClose, onUploaded }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <form onSubmit={handleSubmit} className="panel w-full max-w-md p-5">
-        <h2 className="mb-4 text-base font-semibold text-ink-100">Upload evidence</h2>
-        <div className="space-y-3">
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Incident</span>
-            <select
-              required
-              value={incidentId}
-              onChange={(e) => setIncidentId(e.target.value)}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            >
-              <option value="">Select incident…</option>
-              {incidents.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.display_id || i.id} — {i.description || 'no description'}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Type</span>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            >
-              <option value="photo">Photo</option>
-              <option value="audio">Audio</option>
-              <option value="video">Video</option>
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">Comment (optional)</span>
-            <input
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-ink-300">File</span>
-            <input
-              type="file"
-              required
-              accept="image/*,audio/*,video/*"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className="w-full text-ink-300 file:mr-3 file:rounded-md file:border-0 file:bg-base-600 file:px-3 file:py-1.5 file:text-sm file:text-ink-100"
-            />
-          </label>
-          {submitting && (
-            <div className="h-2 w-full overflow-hidden rounded-full bg-base-700">
-              <div className="h-full bg-signal-blue transition-all" style={{ width: `${progress}%` }} />
-            </div>
-          )}
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onClose} disabled={submitting} className="rounded-lg px-3 py-1.5 text-sm text-ink-300 hover:bg-base-700">
+    <Modal
+      title="Add evidence"
+      onClose={submitting ? undefined : onClose}
+      dismissible={!submitting}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting || !file || !incidentId}
-            className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60"
-          >
+          </Button>
+          <Button type="submit" form="upload-evidence" icon={Upload} loading={submitting} disabled={!file || !incidentId}>
             {submitting ? `Uploading… ${progress}%` : 'Upload'}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      <form id="upload-evidence" onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <Field label="Which incident is this for?">
+          <select required value={incidentId} onChange={(e) => setIncidentId(e.target.value)} className="input">
+            <option value="">Choose an incident</option>
+            {incidents.map((i) => (
+              <option key={i.id} value={i.id}>
+                {i.display_id || 'Incident'} - {i.description || 'No description'}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Kind of file">
+          <select value={type} onChange={(e) => setType(e.target.value)} className="input">
+            <option value="photo">Photo</option>
+            <option value="audio">Audio</option>
+            <option value="video">Video</option>
+          </select>
+        </Field>
+        <Field label="Note (optional)">
+          <input value={comment} onChange={(e) => setComment(e.target.value)} className="input" />
+        </Field>
+        <Field label="File">
+          <input
+            type="file"
+            required
+            accept="image/*,audio/*,video/*"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="w-full text-sm text-ink-700 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-4 file:py-2 file:text-sm file:font-medium file:text-brand-700 hover:file:bg-brand-100"
+          />
+        </Field>
+        {submitting && (
+          <div className="h-2 w-full overflow-hidden rounded-full bg-line">
+            <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${progress}%` }} />
+          </div>
+        )}
       </form>
-    </div>
+    </Modal>
   )
 }
 
@@ -280,29 +262,21 @@ function PreviewModal({ item, onClose }) {
   const url = evidenceStreamUrl(item.id)
   const mime = item.mime_type || ''
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="panel w-full max-w-2xl p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="font-semibold text-ink-100">{item.original_filename || item.type}</h2>
-          <button onClick={onClose} className="text-ink-500 hover:text-ink-100">
-            ✕
-          </button>
-        </div>
-        {mime.startsWith('image/') ? (
-          <img src={url} alt={item.original_filename || 'evidence'} className="max-h-[60vh] w-full rounded-lg object-contain" />
-        ) : mime.startsWith('audio/') ? (
-          <audio controls src={url} className="w-full" />
-        ) : mime.startsWith('video/') ? (
-          <video controls src={url} className="max-h-[60vh] w-full rounded-lg" />
-        ) : (
-          <p className="text-sm text-ink-300">
-            No inline preview available for this file type.{' '}
-            <a href={url} target="_blank" rel="noreferrer" className="text-sky-300 hover:underline">
-              Open in new tab
-            </a>
-          </p>
-        )}
-      </div>
-    </div>
+    <Modal title={item.original_filename || TYPE_LABELS[item.type] || 'Evidence'} onClose={onClose} size="lg">
+      {mime.startsWith('image/') ? (
+        <img src={url} alt={item.original_filename || 'evidence'} className="max-h-[60vh] w-full rounded-xl object-contain" />
+      ) : mime.startsWith('audio/') ? (
+        <audio controls src={url} className="w-full" />
+      ) : mime.startsWith('video/') ? (
+        <video controls src={url} className="max-h-[60vh] w-full rounded-xl bg-black" />
+      ) : (
+        <p className="text-sm text-ink-700">
+          This kind of file cannot be shown here.{' '}
+          <a href={url} target="_blank" rel="noreferrer" className="font-medium text-brand-600 hover:underline">
+            Open it in a new tab
+          </a>
+        </p>
+      )}
+    </Modal>
   )
 }

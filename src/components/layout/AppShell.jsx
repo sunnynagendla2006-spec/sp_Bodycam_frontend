@@ -1,134 +1,256 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
+import {
+  Bell,
+  Building2,
+  Camera,
+  Clapperboard,
+  FileText,
+  FolderOpen,
+  History,
+  House,
+  LogOut,
+  Map as MapIcon,
+  Menu,
+  Radio,
+  Settings as SettingsIcon,
+  Shield,
+  UserRound,
+  Users,
+  Wifi,
+  WifiOff,
+  X,
+} from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useOperations } from '../../context/OperationsContext.jsx'
 import { ROLE_LABELS, canViewStations, canViewRoster, canViewAudit, canViewSettings, canViewOperations } from '../../utils/roles.js'
 
-const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', end: true, show: () => true },
-  { to: '/monitoring', label: 'Live Monitoring', show: canViewOperations },
-  { to: '/map', label: 'Live Map', show: canViewOperations },
-  { to: '/devices', label: 'Devices', show: canViewOperations },
-  { to: '/recordings', label: 'Recordings', show: canViewOperations },
-  { to: '/alerts', label: 'Alerts', show: canViewOperations },
-  { to: '/commands', label: 'Commands', show: canViewOperations },
-  { to: '/constables', label: 'Constables', show: canViewRoster },
-  { to: '/stations', label: 'Police Stations', show: canViewStations },
-  { to: '/audit', label: 'Audit Logs', show: canViewAudit },
-  { to: '/settings', label: 'Settings', show: canViewSettings },
-  { to: '/incidents', label: 'Incidents (legacy)', show: () => true },
-  { to: '/evidence', label: 'Evidence (legacy)', show: () => true },
+const always = () => true
+
+// Grouped by what a person is trying to do, using everyday wording.
+const NAV_GROUPS = [
+  {
+    heading: 'Daily work',
+    items: [
+      { to: '/', label: 'Home', icon: House, end: true, show: always },
+      { to: '/map', label: 'Live Map', tabLabel: 'Map', icon: MapIcon, show: canViewOperations },
+      { to: '/monitoring', label: 'Body Cameras', tabLabel: 'Cameras', icon: Camera, show: canViewOperations },
+      { to: '/recordings', label: 'Recordings', icon: Clapperboard, show: canViewOperations },
+      { to: '/alerts', label: 'Alerts', icon: Bell, show: canViewOperations },
+    ],
+  },
+  {
+    heading: 'Cases',
+    items: [
+      { to: '/incidents', label: 'Incidents', icon: FileText, show: always },
+      { to: '/evidence', label: 'Evidence', icon: FolderOpen, show: always },
+    ],
+  },
+  {
+    heading: 'Manage',
+    items: [
+      { to: '/constables', label: 'Constables', icon: Users, show: canViewRoster },
+      { to: '/stations', label: 'Police Stations', icon: Building2, show: canViewStations },
+      { to: '/commands', label: 'Remote Actions', icon: Radio, show: canViewOperations },
+      { to: '/audit', label: 'Activity History', icon: History, show: canViewAudit },
+      { to: '/settings', label: 'Settings', icon: SettingsIcon, show: canViewSettings },
+    ],
+  },
 ]
+
+// The five most-used places, pinned to the bottom of the screen on phones.
+const TAB_ITEMS = ['/', '/monitoring', '/map', '/alerts']
+
+function CountBadge({ value }) {
+  if (!value) return null
+  return (
+    <span className="ml-auto min-w-[1.4rem] rounded-full bg-signal-red px-1.5 py-0.5 text-center text-xs font-semibold tabular-nums text-white">
+      {value}
+    </span>
+  )
+}
 
 export default function AppShell() {
   const { user, logout } = useAuth()
   const { connected, counts } = useOperations()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const mainRef = useRef(null)
+
+  // Every page opens at the top, and the phone menu closes after navigating.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 })
+    setSidebarOpen(false)
+  }, [location.pathname])
 
   function handleLogout() {
     logout()
     navigate('/login', { replace: true })
   }
 
+  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.show(user?.role)) })).filter((g) => g.items.length > 0)
+  const allItems = groups.flatMap((g) => g.items)
+  const tabItems = TAB_ITEMS.map((to) => allItems.find((i) => i.to === to)).filter(Boolean)
+  const badgeFor = (to) => (to === '/alerts' ? counts.criticalAlerts : 0)
+
   return (
-    <div className="flex h-screen bg-base-950 text-ink-100">
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
+    <div className="flex h-screen bg-canvas text-ink-900">
+      {sidebarOpen && <div className="fixed inset-0 z-30 animate-fade-in bg-ink-900/40 backdrop-blur-[2px] lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden="true" />}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 transform flex-col border-r border-base-700 bg-base-900 transition-transform duration-200 ease-in-out lg:static lg:translate-x-0 ${
-          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 shrink-0 transform flex-col border-r border-line bg-surface transition-transform duration-300 ease-out lg:static lg:w-64 lg:translate-x-0 ${
+          sidebarOpen ? 'translate-x-0 shadow-pop' : '-translate-x-full'
         }`}
       >
-        <div className="flex items-center gap-3 border-b border-base-700 px-5 py-5">
-          <span className="text-2xl">🚨</span>
-          <div>
-            <p className="font-semibold leading-tight text-ink-100">Body-Camera Control Room</p>
-            <p className="text-xs text-ink-500">Operations Console</p>
+        <div className="flex items-center justify-between gap-3 px-5 py-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600 text-white shadow-card">
+              <Shield className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="font-semibold leading-tight text-ink-900">Police Control Room</p>
+              <p className="text-xs text-ink-500">Body camera monitoring</p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-lg p-2 text-ink-500 hover:bg-line/60 lg:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4 scrollbar-thin">
-          {NAV_ITEMS.filter((item) => item.show(user?.role)).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-signal-blue/15 text-sky-300' : 'text-ink-300 hover:bg-base-700/60 hover:text-ink-100'
-                }`
-              }
-            >
-              <span>{item.label}</span>
-              {item.to === '/alerts' && counts.criticalAlerts > 0 && (
-                <span className="rounded-full bg-signal-red px-1.5 py-0.5 text-xs font-semibold text-white">{counts.criticalAlerts}</span>
-              )}
-              {item.to === '/recordings' && counts.activeRecordings > 0 && (
-                <span className="rounded-full bg-signal-red px-1.5 py-0.5 text-xs font-semibold text-white">{counts.activeRecordings}</span>
-              )}
-            </NavLink>
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-thin" aria-label="Main">
+          {groups.map((group) => (
+            <div key={group.heading} className="mt-4 first:mt-0">
+              <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-ink-400">{group.heading}</p>
+              <div className="space-y-0.5">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.end}
+                    className={({ isActive }) =>
+                      `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-150 ${
+                        isActive ? 'bg-brand-50 text-brand-700' : 'text-ink-700 hover:bg-canvas hover:text-ink-900'
+                      }`
+                    }
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <span
+                          className={`absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-600 transition-all duration-200 ${
+                            isActive ? 'opacity-100' : 'h-0 opacity-0'
+                          }`}
+                        />
+                        <item.icon className={`h-5 w-5 shrink-0 transition-transform duration-150 group-hover:scale-110 ${isActive ? 'text-brand-600' : 'text-ink-500'}`} aria-hidden="true" />
+                        <span>{item.label}</span>
+                        <CountBadge value={badgeFor(item.to)} />
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
-        <div className="border-t border-base-700 p-3">
+        <div className="border-t border-line p-3">
           <NavLink
             to="/profile"
-            className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-2 py-2 text-sm ${isActive ? 'bg-base-700/60' : 'hover:bg-base-700/40'}`
-            }
+            className={({ isActive }) => `flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors ${isActive ? 'bg-brand-50' : 'hover:bg-canvas'}`}
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-signal-blue/20 font-semibold text-sky-300">
-              {(user?.phone || '?')[0]}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-brand-700">
+              <UserRound className="h-[18px] w-[18px]" aria-hidden="true" />
             </span>
             <span className="min-w-0">
-              <span className="block truncate font-medium text-ink-100">{user?.phone}</span>
+              <span className="block truncate text-sm font-medium text-ink-900">{user?.phone}</span>
               <span className="block truncate text-xs text-ink-500">{ROLE_LABELS[user?.role] || user?.role}</span>
             </span>
           </NavLink>
           <button
             onClick={handleLogout}
-            className="mt-2 w-full rounded-lg px-3 py-2 text-left text-sm text-ink-500 hover:bg-base-700/40 hover:text-red-300"
+            className="mt-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-ink-500 transition-colors hover:bg-red-50 hover:text-signal-red"
           >
+            <LogOut className="h-5 w-5" aria-hidden="true" />
             Sign out
           </button>
         </div>
       </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between border-b border-base-700 bg-base-900/60 px-6 py-3">
-          <div className="flex items-center gap-3 text-sm text-ink-500">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-4 py-3 backdrop-blur sm:px-6">
+          <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setSidebarOpen(true)}
-              className="rounded-lg p-1.5 text-ink-300 hover:bg-base-700/60 hover:text-ink-100 lg:hidden"
-              aria-label="Open navigation menu"
+              className="-ml-1.5 rounded-xl p-2 text-ink-700 transition-colors hover:bg-line/60 lg:hidden"
+              aria-label="Open menu"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5" />
-              </svg>
+              <Menu className="h-6 w-6" />
             </button>
-            <span
-              className={`h-2 w-2 rounded-full ${connected ? 'bg-signal-green animate-pulseSlow' : 'bg-base-500'}`}
-              title={connected ? 'Live updates connected' : 'Live updates disconnected'}
-            />
-            {connected ? 'Live' : 'Offline'}
+            <span className="font-semibold text-ink-900 lg:hidden">Police Control Room</span>
           </div>
-          <div className="text-sm text-ink-500">
-            Signed in as <span className="text-ink-100">{user?.phone}</span> · {ROLE_LABELS[user?.role] || user?.role}
+
+          <div className="flex items-center gap-4">
+            <span
+              className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                connected ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-800'
+              }`}
+              title={connected ? 'Information on this screen updates by itself' : 'Trying to reconnect. Information may be out of date.'}
+            >
+              {connected ? <Wifi className="h-4 w-4" aria-hidden="true" /> : <WifiOff className="h-4 w-4" aria-hidden="true" />}
+              <span className="hidden sm:inline">{connected ? 'Updating live' : 'Reconnecting'}</span>
+              <span className="sm:hidden">{connected ? 'Live' : 'Offline'}</span>
+            </span>
+            <span className="hidden text-sm text-ink-500 md:block">
+              <span className="font-medium text-ink-900">{user?.phone}</span> · {ROLE_LABELS[user?.role] || user?.role}
+            </span>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-6 scrollbar-thin">
-          <Outlet />
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-6 pb-28 scrollbar-thin sm:px-6 lg:pb-8">
+          <div key={location.pathname} className="mx-auto w-full max-w-7xl animate-fade-in">
+            <Outlet />
+          </div>
         </main>
+
+        <nav
+          className="fixed inset-x-0 bottom-0 z-20 grid border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
+          style={{ gridTemplateColumns: `repeat(${tabItems.length + 1}, minmax(0, 1fr))` }}
+          aria-label="Quick links"
+        >
+          {tabItems.map((item) => {
+            const badge = badgeFor(item.to)
+            return (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `relative flex flex-col items-center gap-1 px-2 py-2.5 text-xs font-medium transition-colors ${isActive ? 'text-brand-600' : 'text-ink-500'}`
+                }
+              >
+                <span className="relative">
+                  <item.icon className="h-6 w-6" aria-hidden="true" />
+                  {badge > 0 && (
+                    <span className="absolute -right-2 -top-1.5 min-w-[1.1rem] rounded-full bg-signal-red px-1 text-center text-[10px] font-semibold leading-[1.1rem] text-white">
+                      {badge}
+                    </span>
+                  )}
+                </span>
+                {item.tabLabel || item.label}
+              </NavLink>
+            )
+          })}
+          <button type="button" onClick={() => setSidebarOpen(true)} className="flex flex-col items-center gap-1 px-2 py-2.5 text-xs font-medium text-ink-500">
+            <Menu className="h-6 w-6" aria-hidden="true" />
+            More
+          </button>
+        </nav>
       </div>
     </div>
   )

@@ -1,46 +1,54 @@
+import { statusLabel } from '../utils/labels.js'
+
 const TONE_MAP = {
-  // Incident statuses
+  // Incidents
   new: 'blue', verified: 'green', rejected: 'red', assigned: 'amber',
   en_route: 'amber', arrived: 'amber', resolved: 'green', closed: 'slate', needs_review: 'violet',
-  // Evidence upload statuses
+  // Evidence
   uploading: 'slate', uploaded: 'blue', archived: 'slate',
-  // Constable statuses
+  // Constables
   available: 'green', busy: 'amber',
-  // Assignment statuses
+  // Assignments
   pending: 'amber', accepted: 'green', completed: 'green',
-  // User account status
+  // Accounts
   active: 'green', inactive: 'slate',
-  // Phase 1-3: Device status -- offline is safety-critical in this domain
-  // (a lost/unreachable body-cam device), not merely "off shift", so it
-  // gets a stronger tone than the old constable-status meaning did.
+  // Camera status -- offline is safety-critical in this domain (a lost or
+  // unreachable body camera), so it gets the strongest tone.
   online: 'green', stale: 'amber', offline: 'red',
   recording: 'red',
-  // Alert severity/status
+  // Alerts
   open: 'red', acknowledged: 'amber',
   warning: 'amber', critical: 'red',
-  // Recording status
+  // Recordings
   cancelled: 'slate', failed: 'red',
-  // RemoteCommand status
+  // Remote actions
   sent: 'blue', executed: 'green', timeout: 'red',
-  // Live stream status
+  // Live view
   live: 'red', ended: 'slate',
 }
 
 const TONE_CLASSES = {
-  green: 'bg-signal-green/10 text-emerald-300 border-signal-green/30',
-  amber: 'bg-signal-amber/10 text-amber-300 border-signal-amber/30',
-  red: 'bg-signal-red/10 text-red-300 border-signal-red/30',
-  blue: 'bg-signal-blue/10 text-sky-300 border-signal-blue/30',
-  violet: 'bg-signal-violet/10 text-violet-300 border-signal-violet/30',
-  slate: 'bg-base-600/40 text-ink-300 border-base-500/40',
+  green: { pill: 'bg-signal-green/10 text-green-800 border-signal-green/25', dot: 'bg-signal-green' },
+  amber: { pill: 'bg-signal-amber/10 text-amber-800 border-signal-amber/30', dot: 'bg-signal-amber' },
+  red: { pill: 'bg-signal-red/10 text-red-800 border-signal-red/25', dot: 'bg-signal-red' },
+  blue: { pill: 'bg-signal-blue/10 text-blue-800 border-signal-blue/25', dot: 'bg-signal-blue' },
+  violet: { pill: 'bg-signal-violet/10 text-violet-800 border-signal-violet/25', dot: 'bg-signal-violet' },
+  slate: { pill: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' },
 }
+
+// Statuses that mean "happening right now" get a softly pulsing dot.
+const LIVE_STATUSES = new Set(['recording', 'live'])
 
 export default function StatusBadge({ status, label }) {
   const tone = TONE_MAP[status] || 'slate'
-  const text = label || (status ? status.replace(/_/g, ' ') : 'unknown')
+  const text = label || (status ? statusLabel(status) : 'Unknown')
+  const t = TONE_CLASSES[tone]
   return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium capitalize ${TONE_CLASSES[tone]}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${TONE_CLASSES[tone].split(' ')[1].replace('text-', 'bg-')}`} />
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium ${t.pill}`}>
+      <span className="relative flex h-2 w-2">
+        {LIVE_STATUSES.has(status) && <span className={`absolute inline-flex h-full w-full animate-ping-soft rounded-full ${t.dot}`} />}
+        <span className={`relative inline-flex h-2 w-2 rounded-full ${t.dot}`} />
+      </span>
       {text}
     </span>
   )

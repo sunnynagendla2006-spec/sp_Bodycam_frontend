@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import L from 'leaflet'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import { Link } from 'react-router-dom'
+import { MapPin, Navigation } from 'lucide-react'
 import { useOperations } from '../context/OperationsContext.jsx'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { LoadingSkeleton, ErrorState, PageHeader } from '../components/Primitives.jsx'
+import { Card } from '../components/ui/Card.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
 import { formatDateTime, formatRelativeTime } from '../utils/format.js'
 
@@ -32,12 +34,12 @@ function labeledIcon(color, label) {
   return L.divIcon({
     className: 'live-map-marker',
     html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
-      <div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid white;box-shadow:0 0 4px rgba(0,0,0,0.6)"></div>
-      <div style="margin-top:2px;padding:1px 6px;background:rgba(15,17,21,0.85);color:#fff;font-size:11px;line-height:1.5;border-radius:4px;white-space:nowrap;font-weight:600;">${escapeHtml(label)}</div>
+      <div style="width:18px;height:18px;border-radius:50%;background:${color};border:3px solid white;box-shadow:0 2px 6px rgba(16,24,40,0.35)"></div>
+      <div style="margin-top:3px;padding:2px 8px;background:#fff;color:#101828;font-size:12px;line-height:1.5;border-radius:999px;white-space:nowrap;font-weight:600;box-shadow:0 1px 4px rgba(16,24,40,0.25);">${escapeHtml(label)}</div>
     </div>`,
     iconSize: undefined,
-    iconAnchor: [8, 8],
-    popupAnchor: [0, -8],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -9],
   })
 }
 
@@ -141,10 +143,10 @@ export default function LiveMap() {
     <div>
       <PageHeader
         title="Live Map"
-        subtitle={`${activeRows.length} active, ${offlineRows.length} offline with last known location, ${noLocationRows.length} without location data`}
+        subtitle={`${activeRows.length} online, ${offlineRows.length} offline, ${noLocationRows.length} with no location yet`}
       />
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
-        <div className="panel overflow-hidden relative" style={{ height: '70vh' }}>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_340px]">
+        <Card className="relative h-[55vh] animate-rise-in overflow-hidden lg:h-[70vh]">
           <MapContainer center={center} zoom={located.length > 0 ? 11 : 5} style={{ height: '100%', width: '100%' }}>
             <MapController mapRef={mapRef} />
             <TileLayer
@@ -158,21 +160,14 @@ export default function LiveMap() {
                 icon={labeledIcon(r.active ? ACTIVE_COLOR : OFFLINE_COLOR, constableLabel(r.constable))}
               >
                 <Popup>
-                  <div className="text-sm space-y-1.5 min-w-[180px]">
-                    <p className="font-semibold text-base">{constableLabel(r.constable)}</p>
-                    <div className="flex items-center gap-2">
-                      <span>Status:</span>
-                      <StatusBadge status={r.active ? 'online' : 'offline'} label={r.active ? 'ACTIVE' : 'OFFLINE'} />
-                    </div>
-                    {!r.active && <p className="text-xs text-ink-500 -mt-1">Last known location</p>}
-                    <p>
-                      Location: {r.device.latitude.toFixed(6)}, {r.device.longitude.toFixed(6)}
-                    </p>
-                    <p>Last Update: {formatDateTime(r.device.location_updated_at)}</p>
-                    {r.device.device_identifier && <p>Device: {r.device.device_identifier}</p>}
-                    {r.constable.station_name && <p>Station: {r.constable.station_name}</p>}
-                    <Link to={`/devices/${r.device.id}`} className="text-blue-600 underline">
-                      View device details
+                  <div className="min-w-[190px] space-y-2 text-sm">
+                    <p className="text-base font-semibold text-ink-900">{constableLabel(r.constable)}</p>
+                    <StatusBadge status={r.active ? 'online' : 'offline'} label={r.active ? 'Online' : 'Offline'} />
+                    {!r.active && <p className="text-xs text-ink-500">Last known location</p>}
+                    <p className="text-ink-700">Last update: {formatDateTime(r.device.location_updated_at)}</p>
+                    {r.constable.station_name && <p className="text-ink-700">Station: {r.constable.station_name}</p>}
+                    <Link to={`/devices/${r.device.id}`} className="inline-block font-medium text-brand-600 hover:underline">
+                      View camera
                     </Link>
                   </div>
                 </Popup>
@@ -180,25 +175,22 @@ export default function LiveMap() {
             ))}
           </MapContainer>
 
-          <div className="absolute bottom-3 left-3 z-[1000] rounded-lg bg-base-800/90 border border-base-600/50 px-3 py-2 text-xs text-ink-200 space-y-1 shadow-lg">
+          <div className="absolute bottom-3 left-3 z-[1000] space-y-1.5 rounded-xl border border-line bg-surface/95 px-3.5 py-2.5 text-xs text-ink-700 shadow-lift backdrop-blur">
             <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: ACTIVE_COLOR }} /> Active Constable
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: ACTIVE_COLOR }} /> Online constable
             </div>
             <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: OFFLINE_COLOR }} /> Offline / Last Known Location
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: NO_LOCATION_COLOR }} /> No Location Available
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: OFFLINE_COLOR }} /> Offline constable
             </div>
           </div>
-        </div>
+        </Card>
 
-        <div className="panel p-3 overflow-y-auto" style={{ height: '70vh' }}>
-          <SidebarSection title="Live Constables" tone="active" rows={activeRows} onSelect={focusOn} />
-          <SidebarSection title="Offline / Last Known" tone="offline" rows={offlineRows} onSelect={focusOn} />
-          <SidebarSection title="No Location" tone="no-location" rows={noLocationRows} onSelect={focusOn} />
+        <Card className="max-h-[60vh] animate-rise-in overflow-y-auto p-4 lg:h-[70vh] lg:max-h-none">
+          <SidebarSection title="Online now" tone="active" rows={activeRows} onSelect={focusOn} />
+          <SidebarSection title="Offline - last known place" tone="offline" rows={offlineRows} onSelect={focusOn} />
+          <SidebarSection title="No location yet" tone="no-location" rows={noLocationRows} onSelect={focusOn} />
           {rows.length === 0 && <p className="text-sm text-ink-500">No constables to display.</p>}
-        </div>
+        </Card>
       </div>
     </div>
   )
@@ -208,30 +200,32 @@ function SidebarSection({ title, tone, rows, onSelect }) {
   if (rows.length === 0) return null
   const dotColor = tone === 'active' ? ACTIVE_COLOR : tone === 'offline' ? OFFLINE_COLOR : NO_LOCATION_COLOR
   return (
-    <div className="mb-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-ink-500 mb-2">{title}</h3>
-      <div className="space-y-1.5">
+    <div className="mb-5 last:mb-0">
+      <h3 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-ink-500">{title}</h3>
+      <div className="space-y-2">
         {rows.map((r) => (
           <button
             key={r.constable.id}
             type="button"
             onClick={() => onSelect(r)}
             disabled={!r.hasLocation}
-            className={`w-full text-left rounded-lg border border-base-600/40 px-2.5 py-2 text-sm transition-colors ${
-              r.hasLocation ? 'hover:bg-base-700/60 cursor-pointer' : 'cursor-default opacity-80'
+            className={`flex w-full items-center gap-3 rounded-xl border border-line px-3.5 py-3 text-left text-sm transition-all duration-150 ${
+              r.hasLocation ? 'cursor-pointer hover:-translate-y-0.5 hover:border-brand-200 hover:bg-brand-50/50 hover:shadow-card' : 'cursor-default opacity-70'
             }`}
           >
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: dotColor }} />
-              <span className="font-medium truncate">{constableLabel(r.constable)}</span>
-            </div>
-            <div className="mt-0.5 pl-4 text-xs text-ink-500">
-              {tone === 'no-location'
-                ? 'No location reported yet'
-                : tone === 'active'
-                  ? `Active · Updated ${formatRelativeTime(r.device.location_updated_at)}`
-                  : `Offline · Last update ${formatRelativeTime(r.device.location_updated_at)}`}
-            </div>
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full" style={{ background: `${dotColor}1A`, color: dotColor }}>
+              {r.hasLocation ? <Navigation className="h-4 w-4" aria-hidden="true" /> : <MapPin className="h-4 w-4" aria-hidden="true" />}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate font-medium text-ink-900">{constableLabel(r.constable)}</span>
+              <span className="block text-xs text-ink-500">
+                {tone === 'no-location'
+                  ? 'No location reported yet'
+                  : tone === 'active'
+                    ? `Online · Updated ${formatRelativeTime(r.device.location_updated_at)}`
+                    : `Offline · Last update ${formatRelativeTime(r.device.location_updated_at)}`}
+              </span>
+            </span>
           </button>
         ))}
       </div>

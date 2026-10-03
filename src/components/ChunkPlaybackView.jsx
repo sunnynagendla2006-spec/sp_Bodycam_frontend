@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { chunkStreamUrl } from '../api/recordings'
+import Button from './ui/Button.jsx'
 
 // Plays a recording's uploaded chunks back-to-back, in chunk_number order.
 // There is no server-side concatenation of chunks into one continuous file
@@ -9,7 +11,7 @@ import { chunkStreamUrl } from '../api/recordings'
 // way to watch a full recording without an ffmpeg-class remux step on the
 // backend. A missing chunk_number in the sequence is skipped over (shown in
 // the strip below as unavailable) rather than breaking playback.
-export default function ChunkPlaybackView({ recordingId, chunks }) {
+export default function ChunkPlaybackView({ recordingId, chunks, emptyMessage = 'Nothing to watch yet. Video appears here as it is uploaded.' }) {
   const videoRef = useRef(null)
   const [index, setIndex] = useState(0)
   const [playing, setPlaying] = useState(false)
@@ -27,7 +29,7 @@ export default function ChunkPlaybackView({ recordingId, chunks }) {
   }, [available.length, index])
 
   if (available.length === 0) {
-    return <p className="text-sm text-ink-300">No uploaded chunks available to play yet.</p>
+    return <p className="rounded-xl bg-canvas px-4 py-6 text-center text-sm text-ink-500">{emptyMessage}</p>
   }
 
   function handleEnded() {
@@ -39,8 +41,8 @@ export default function ChunkPlaybackView({ recordingId, chunks }) {
   }
 
   return (
-    <div className="space-y-2">
-      <div className="overflow-hidden rounded-lg border border-base-700 bg-black">
+    <div className="space-y-3">
+      <div className="overflow-hidden rounded-2xl border border-line bg-black shadow-card">
         <video
           ref={videoRef}
           key={current.chunk_number}
@@ -53,24 +55,18 @@ export default function ChunkPlaybackView({ recordingId, chunks }) {
           className="aspect-video w-full bg-black"
         />
       </div>
-      <div className="flex items-center justify-between text-xs text-ink-500">
-        <button
-          onClick={() => setIndex((i) => Math.max(0, i - 1))}
-          disabled={index === 0}
-          className="rounded-md bg-base-700 px-2 py-1 text-ink-100 hover:bg-base-600 disabled:opacity-40"
-        >
-          ← Previous
-        </button>
-        <span>
-          Chunk {current.chunk_number} ({index + 1} of {available.length}){current.is_last_chunk ? ' · last chunk' : ''}
+      <div className="flex items-center justify-between gap-3">
+        <Button variant="secondary" size="sm" icon={ChevronLeft} onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>
+          Previous part
+        </Button>
+        <span className="text-center text-sm text-ink-500">
+          Part {index + 1} of {available.length}
+          {current.is_last_chunk ? ' · last part' : ''}
         </span>
-        <button
-          onClick={() => setIndex((i) => Math.min(available.length - 1, i + 1))}
-          disabled={index === available.length - 1}
-          className="rounded-md bg-base-700 px-2 py-1 text-ink-100 hover:bg-base-600 disabled:opacity-40"
-        >
-          Next →
-        </button>
+        <Button variant="secondary" size="sm" onClick={() => setIndex((i) => Math.min(available.length - 1, i + 1))} disabled={index === available.length - 1}>
+          Next part
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
     </div>
   )

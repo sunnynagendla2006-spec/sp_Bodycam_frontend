@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Room, RoomEvent, Track } from 'livekit-client'
+import { Loader2, TriangleAlert, X } from 'lucide-react'
 import { getViewerToken } from '../api/liveStream'
 import { friendlyErrorMessage } from '../api/client'
+import Button from './ui/Button.jsx'
+import StatusBadge from './StatusBadge.jsx'
 
 // Subscribe-only viewer for one live-stream session. Any number of these
 // can be mounted concurrently (in this tab, in other admins' own browser
@@ -60,18 +63,28 @@ export default function LiveVideoView({ sessionId, onClose }) {
   }, [sessionId])
 
   return (
-    <div className="overflow-hidden rounded-lg border border-base-700 bg-black">
-      <div className="flex items-center justify-between bg-base-800 px-3 py-2 text-xs text-ink-300">
-        <span>
-          {status === 'connecting' && 'Connecting…'}
-          {status === 'live' && <span className="text-red-400">● LIVE</span>}
-          {status === 'ended' && 'Stream ended'}
-          {status === 'error' && <span className="text-red-400">{error || 'Connection failed'}</span>}
+    <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+        <span className="flex items-center gap-2 font-medium text-ink-700">
+          {status === 'connecting' && (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin text-ink-500" aria-hidden="true" />
+              Connecting…
+            </>
+          )}
+          {status === 'live' && <StatusBadge status="live" />}
+          {status === 'ended' && 'Live view ended'}
+          {status === 'error' && (
+            <span className="flex items-center gap-2 text-signal-red">
+              <TriangleAlert className="h-4 w-4" aria-hidden="true" />
+              {error || 'Could not connect'}
+            </span>
+          )}
         </span>
         {onClose && (
-          <button onClick={onClose} className="rounded-md bg-base-600/60 px-2 py-1 text-ink-100 hover:bg-base-600">
+          <Button variant="secondary" size="sm" icon={X} onClick={onClose}>
             Close
-          </button>
+          </Button>
         )}
       </div>
       <video ref={videoRef} autoPlay playsInline muted={false} className="aspect-video w-full bg-black" />

@@ -1,13 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Clapperboard, TriangleAlert } from 'lucide-react'
 import { listRecordings } from '../api/recordings.js'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import { formatDateTime, titleCase } from '../utils/format.js'
+import DataTable from '../components/ui/DataTable.jsx'
+import FilterTabs from '../components/ui/FilterTabs.jsx'
+import Pagination from '../components/ui/Pagination.jsx'
+import { formatDateTimeShort } from '../utils/format.js'
+import { statusLabel, triggerLabel } from '../utils/labels.js'
 
-const STATUS_OPTIONS = ['', 'recording', 'completed', 'cancelled', 'failed']
+const STATUS_TABS = ['', 'recording', 'completed', 'cancelled', 'failed'].map((s) => ({ value: s, label: s ? statusLabel(s) : 'All' }))
 const PAGE_SIZE = 25
 
 export default function Recordings() {
@@ -35,23 +40,41 @@ export default function Recordings() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter, offset])
 
+  const columns = [
+    {
+      key: 'constable',
+      header: 'Constable',
+      primary: true,
+      cell: (r) => (
+        <Link to={`/recordings/${r.id}`} className="text-brand-600 hover:text-brand-800 hover:underline">
+          {constableLabel(r.constable_id)}
+        </Link>
+      ),
+    },
+    { key: 'status', header: 'Status', cell: (r) => <StatusBadge status={r.status} /> },
+    { key: 'started', header: 'Started', cell: (r) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(r.started_at)}</span> },
+    { key: 'trigger', header: 'How it started', cell: (r) => <span className="text-ink-700">{triggerLabel(r.trigger_type)}</span> },
+    {
+      key: 'health',
+      header: 'Video',
+      cell: (r) =>
+        r.missing_chunk_numbers?.length > 0 ? (
+          <span className="inline-flex items-center gap-1.5 text-signal-red">
+            <TriangleAlert className="h-4 w-4" aria-hidden="true" />
+            Some parts missing
+          </span>
+        ) : (
+          <span className="text-ink-500">All received</span>
+        ),
+    },
+  ]
+
   return (
     <div>
-      <PageHeader title="Recordings" subtitle="Body-camera recording sessions -- using GET /recordings/ pagination" />
+      <PageHeader title="Recordings" subtitle="Videos recorded by body cameras. Open one to watch it." />
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        {STATUS_OPTIONS.map((s) => (
-          <button
-            key={s || 'all'}
-            onClick={() => {
-              setStatusFilter(s)
-              setOffset(0)
-            }}
-            className={`rounded-lg px-3 py-1.5 text-sm capitalize ${statusFilter === s ? 'bg-signal-blue text-white' : 'bg-base-700/60 text-ink-300 hover:bg-base-700'}`}
-          >
-            {s || 'All'}
-          </button>
-        ))}
+      <div className="mb-5">
+        <FilterTabs options={STATUS_TABS} value={statusFilter} onChange={(v) => { setStatusFilter(v); setOffset(0) }} label="Filter by status" />
       </div>
 
       {loading ? (
@@ -59,47 +82,12 @@ export default function Recordings() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : rows.length === 0 ? (
-        <EmptyState title="No recordings match" />
+        <EmptyState icon={Clapperboard} title="No recordings found" hint="Try a different filter." />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">Constable</th>
-                <th className="p-2">Trigger</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Started</th>
-                <th className="p-2">Chunks</th>
-                <th className="p-2">Missing</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="border-t border-base-700">
-                  <td className="p-2">
-                    <Link to={`/recordings/${r.id}`} className="font-medium text-sky-300 hover:underline">
-                      {constableLabel(r.constable_id)}
-                    </Link>
-                  </td>
-                  <td className="p-2 text-ink-300">{titleCase(r.trigger_type)}</td>
-                  <td className="p-2"><StatusBadge status={r.status} /></td>
-                  <td className="p-2 text-ink-500">{formatDateTime(r.started_at)}</td>
-                  <td className="p-2 text-ink-300">{r.chunk_count}</td>
-                  <td className="p-2">{r.missing_chunk_numbers?.length > 0 ? <span className="text-red-300">{r.missing_chunk_numbers.length}</span> : <span className="text-ink-500">0</span>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={rows} />
       )}
 
-      <div className="mt-4 flex items-center justify-between text-sm text-ink-500">
-        <span>Showing {offset + 1}–{offset + rows.length}</span>
-        <div className="flex gap-2">
-          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Previous</button>
-          <button disabled={rows.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Next</button>
-        </div>
-      </div>
+      <Pagination offset={offset} pageSize={PAGE_SIZE} count={rows.length} onChange={setOffset} />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import DeviceDetails from '../pages/DeviceDetails.jsx'
 
@@ -69,13 +69,13 @@ describe('DeviceDetails remote command confirmation + lifecycle rendering', () =
     expect(mockIssueCommand).not.toHaveBeenCalled()
   })
 
-  it('only calls issueCommand after the user explicitly clicks "Send command" in the confirmation dialog', async () => {
+  it('only calls issueCommand after the user explicitly clicks "Send now" in the confirmation dialog', async () => {
     mockIssueCommand.mockResolvedValue({ id: 'cmd-1', status: 'sent' })
     renderPage()
     await waitFor(() => expect(screen.getByText('Remote control')).toBeInTheDocument())
 
     fireEvent.click(screen.getByRole('button', { name: /start recording/i }))
-    fireEvent.click(screen.getByRole('button', { name: /send command/i }))
+    fireEvent.click(screen.getByRole('button', { name: /send now/i }))
 
     await waitFor(() => expect(mockIssueCommand).toHaveBeenCalledWith('device-1', 'start_recording'))
   })
@@ -107,10 +107,10 @@ describe('DeviceDetails remote command confirmation + lifecycle rendering', () =
     ])
     renderPage()
 
-    await waitFor(() => expect(screen.getByText('Start Recording')).toBeInTheDocument())
-    // The progress indicator must reflect "sent", never jump ahead to executed.
-    expect(screen.getByText('sent')).toBeInTheDocument()
-    expect(screen.queryByText('executed')).not.toBeInTheDocument()
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('Start recording')).toBeInTheDocument())
+    // The progress indicator must reflect "sent", never jump ahead to done.
+    expect(screen.getByText('Sent')).toBeInTheDocument()
+    expect(screen.queryByText('Done')).not.toBeInTheDocument()
   })
 
   it('renders a genuinely EXECUTED command correctly once the backend reports it', async () => {
@@ -122,7 +122,7 @@ describe('DeviceDetails remote command confirmation + lifecycle rendering', () =
       },
     ])
     renderPage()
-    await waitFor(() => expect(screen.getByText('executed')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('Done')).toBeInTheDocument())
   })
 
   it('renders a FAILED command with its real failure reason from the backend, not a generic message', async () => {

@@ -1,14 +1,27 @@
 import { useEffect, useState } from 'react'
+import { CircleCheck } from 'lucide-react'
 import { listAlerts } from '../api/alerts.js'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import { formatDateTime, titleCase } from '../utils/format.js'
+import DataTable from '../components/ui/DataTable.jsx'
+import FilterTabs from '../components/ui/FilterTabs.jsx'
+import Pagination from '../components/ui/Pagination.jsx'
+import { formatDateTimeShort } from '../utils/format.js'
+import { ALERT_TYPE_OPTIONS, alertTypeLabel } from '../utils/labels.js'
 
-const STATUS_OPTIONS = ['', 'open', 'acknowledged', 'resolved']
-const SEVERITY_OPTIONS = ['', 'warning', 'critical']
-const TYPE_OPTIONS = ['', 'low_battery', 'critical_battery', 'device_offline', 'device_stale', 'recording_device_offline', 'command_failed', 'command_timeout']
+const STATUS_TABS = [
+  { value: '', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'acknowledged', label: 'Seen' },
+  { value: 'resolved', label: 'Resolved' },
+]
+const SEVERITY_TABS = [
+  { value: '', label: 'Any importance' },
+  { value: 'critical', label: 'Urgent' },
+  { value: 'warning', label: 'Warning' },
+]
 const PAGE_SIZE = 50
 
 export default function Alerts() {
@@ -38,23 +51,32 @@ export default function Alerts() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, severity, type, offset])
 
+  const columns = [
+    { key: 'severity', header: 'Importance', cell: (a) => <StatusBadge status={a.severity} /> },
+    { key: 'type', header: 'What happened', primary: true, cell: (a) => <span title={a.message || undefined}>{alertTypeLabel(a.type)}</span> },
+    { key: 'constable', header: 'Constable', cell: (a) => constableLabel(a.constable_id) },
+    { key: 'status', header: 'Status', cell: (a) => <StatusBadge status={a.status} /> },
+    { key: 'created', header: 'When', cell: (a) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(a.created_at)}</span> },
+  ]
+
   return (
     <div>
-      <PageHeader title="Alerts" subtitle="Persisted device/battery/recording/command alerts -- GET /alerts/" />
+      <PageHeader title="Alerts" subtitle="Things that may need your attention, such as low battery or a camera going offline" />
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <select value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100">
-          <option value="">All statuses</option>
-          {STATUS_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
-        </select>
-        <select value={severity} onChange={(e) => { setSeverity(e.target.value); setOffset(0) }} className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100">
-          <option value="">All severities</option>
-          {SEVERITY_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
-        </select>
-        <select value={type} onChange={(e) => { setType(e.target.value); setOffset(0) }} className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100">
-          <option value="">All types</option>
-          {TYPE_OPTIONS.filter(Boolean).map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
-        </select>
+      <div className="mb-5 space-y-3">
+        <FilterTabs options={STATUS_TABS} value={status} onChange={(v) => { setStatus(v); setOffset(0) }} label="Filter by status" />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <FilterTabs options={SEVERITY_TABS} value={severity} onChange={(v) => { setSeverity(v); setOffset(0) }} label="Filter by importance" />
+          <select
+            value={type}
+            onChange={(e) => { setType(e.target.value); setOffset(0) }}
+            className="input sm:ml-auto sm:w-64"
+            aria-label="Filter by kind of alert"
+          >
+            <option value="">All kinds of alerts</option>
+            {ALERT_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{alertTypeLabel(t)}</option>)}
+          </select>
+        </div>
       </div>
 
       {loading ? (
@@ -62,43 +84,16 @@ export default function Alerts() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : rows.length === 0 ? (
-        <EmptyState title="No alerts match" hint="No active alerts -- all monitored devices are within normal parameters." />
+        <EmptyState icon={CircleCheck} title="No alerts found" hint="Nothing needs attention right now, or no alert matches your filters." />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">Severity</th>
-                <th className="p-2">Type</th>
-                <th className="p-2">Constable</th>
-                <th className="p-2">Message</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((a) => (
-                <tr key={a.id} className={`border-t border-base-700 ${a.severity === 'critical' && a.status === 'open' ? 'bg-signal-red/5' : ''}`}>
-                  <td className="p-2"><StatusBadge status={a.severity} /></td>
-                  <td className="p-2 text-ink-100">{titleCase(a.type)}</td>
-                  <td className="p-2 text-ink-300">{constableLabel(a.constable_id)}</td>
-                  <td className="p-2 text-ink-300">{a.message || '—'}</td>
-                  <td className="p-2"><StatusBadge status={a.status} /></td>
-                  <td className="p-2 text-ink-500">{formatDateTime(a.created_at)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowClassName={(a) => (a.severity === 'critical' && a.status === 'open' ? 'border-red-200 bg-red-50/40 md:bg-red-50/40' : '')}
+        />
       )}
 
-      <div className="mt-4 flex items-center justify-between text-sm text-ink-500">
-        <span>Showing {offset + 1}–{offset + rows.length}</span>
-        <div className="flex gap-2">
-          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Previous</button>
-          <button disabled={rows.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Next</button>
-        </div>
-      </div>
+      <Pagination offset={offset} pageSize={PAGE_SIZE} count={rows.length} onChange={setOffset} />
     </div>
   )
 }

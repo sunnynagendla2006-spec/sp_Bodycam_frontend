@@ -1,16 +1,22 @@
 import { useEffect, useState } from 'react'
+import { Radio } from 'lucide-react'
 import { listAllCommands } from '../api/commands.js'
+import { useOperations } from '../context/OperationsContext.jsx'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
-import { formatDateTime, titleCase } from '../utils/format.js'
+import DataTable from '../components/ui/DataTable.jsx'
+import Pagination from '../components/ui/Pagination.jsx'
+import { formatDateTimeShort } from '../utils/format.js'
+import { COMMAND_TYPE_OPTIONS, commandTypeLabel, friendlyFailure, statusLabel } from '../utils/labels.js'
 
-const STATUS_OPTIONS = ['', 'pending', 'sent', 'acknowledged', 'executed', 'failed', 'timeout', 'cancelled']
-const TYPE_OPTIONS = ['', 'start_recording', 'stop_recording', 'start_live_stream', 'stop_live_stream']
+const STATUS_OPTIONS = ['pending', 'sent', 'acknowledged', 'executed', 'failed', 'timeout', 'cancelled']
 const PAGE_SIZE = 50
 
 export default function Commands() {
+  const { devices } = useOperations()
+  const { label: constableLabel } = useConstableLookup()
   const [rows, setRows] = useState([])
   const [status, setStatus] = useState('')
   const [commandType, setCommandType] = useState('')
@@ -35,18 +41,29 @@ export default function Commands() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, commandType, offset])
 
+  const constableByDevice = Object.fromEntries((devices || []).map((d) => [d.id, d.constable_id]))
+
+  const columns = [
+    { key: 'command', header: 'Action', primary: true, cell: (c) => commandTypeLabel(c.command_type) },
+    { key: 'camera', header: 'Camera of', cell: (c) => (constableByDevice[c.device_id] ? constableLabel(constableByDevice[c.device_id]) : '—') },
+    { key: 'status', header: 'Result', cell: (c) => <StatusBadge status={c.status} /> },
+    { key: 'created', header: 'Requested', cell: (c) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(c.created_at)}</span> },
+    { key: 'executed', header: 'Completed', cell: (c) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(c.executed_at)}</span> },
+    { key: 'failure', header: 'Problem', cell: (c) => <span className="text-signal-red" title={c.failure_reason || undefined}>{friendlyFailure(c.failure_reason)}</span> },
+  ]
+
   return (
     <div>
-      <PageHeader title="Commands" subtitle="Remote command history across all devices -- GET /commands/" />
+      <PageHeader title="Remote Actions" subtitle="Everything that has been sent to body cameras from the control room" />
 
-      <div className="mb-4 flex flex-wrap gap-3">
-        <select value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100">
-          <option value="">All statuses</option>
-          {STATUS_OPTIONS.filter(Boolean).map((s) => <option key={s} value={s}>{titleCase(s)}</option>)}
+      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:max-w-xl">
+        <select value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0) }} className="input" aria-label="Filter by result">
+          <option value="">Any result</option>
+          {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
         </select>
-        <select value={commandType} onChange={(e) => { setCommandType(e.target.value); setOffset(0) }} className="rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-sm text-ink-100">
-          <option value="">All command types</option>
-          {TYPE_OPTIONS.filter(Boolean).map((t) => <option key={t} value={t}>{titleCase(t)}</option>)}
+        <select value={commandType} onChange={(e) => { setCommandType(e.target.value); setOffset(0) }} className="input" aria-label="Filter by action">
+          <option value="">Any action</option>
+          {COMMAND_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{commandTypeLabel(t)}</option>)}
         </select>
       </div>
 
@@ -55,43 +72,12 @@ export default function Commands() {
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
       ) : rows.length === 0 ? (
-        <EmptyState title="No commands match" />
+        <EmptyState icon={Radio} title="Nothing here yet" hint="Actions you send to a camera, like starting a recording, will be listed here." />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">Command</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Created</th>
-                <th className="p-2">Acknowledged</th>
-                <th className="p-2">Executed</th>
-                <th className="p-2">Failure</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className="border-t border-base-700">
-                  <td className="p-2 text-ink-100">{titleCase(c.command_type)}</td>
-                  <td className="p-2"><StatusBadge status={c.status} /></td>
-                  <td className="p-2 text-ink-500">{formatDateTime(c.created_at)}</td>
-                  <td className="p-2 text-ink-500">{formatDateTime(c.acknowledged_at)}</td>
-                  <td className="p-2 text-ink-500">{formatDateTime(c.executed_at)}</td>
-                  <td className="p-2 text-red-300">{c.failure_reason || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={rows} />
       )}
 
-      <div className="mt-4 flex items-center justify-between text-sm text-ink-500">
-        <span>Showing {offset + 1}–{offset + rows.length}</span>
-        <div className="flex gap-2">
-          <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Previous</button>
-          <button disabled={rows.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)} className="rounded-lg bg-base-700/60 px-3 py-1 disabled:opacity-40">Next</button>
-        </div>
-      </div>
+      <Pagination offset={offset} pageSize={PAGE_SIZE} count={rows.length} onChange={setOffset} />
     </div>
   )
 }

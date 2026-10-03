@@ -1,4 +1,5 @@
 import { Navigate, useLocation } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 
 export default function ProtectedRoute({ children }) {
@@ -7,7 +8,8 @@ export default function ProtectedRoute({ children }) {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-base-950 text-ink-500">
+      <div className="flex h-screen items-center justify-center gap-3 bg-canvas text-ink-500">
+        <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
         Checking session…
       </div>
     )

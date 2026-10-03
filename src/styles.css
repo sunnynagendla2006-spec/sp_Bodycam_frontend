@@ -7,30 +7,69 @@
     height: 100%;
   }
   body {
-    @apply bg-base-950 text-ink-100 antialiased;
+    @apply bg-canvas text-ink-900 antialiased;
+    font-feature-settings: 'cv11', 'ss01';
   }
   ::selection {
-    @apply bg-signal-blue/30;
+    @apply bg-brand-200;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-canvas;
+  }
+  button, a, select, input, textarea {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-line bg-surface shadow-card;
+  }
+  .card-hover {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-lift;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 transition-shadow;
+    @apply focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-100 disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-500;
+  }
+  .skeleton {
+    background: linear-gradient(90deg, #eef1f6 25%, #f8f9fc 37%, #eef1f6 63%);
+    background-size: 800px 100%;
+    @apply animate-shimmer rounded-xl;
   }
 }
 
 @layer utilities {
-  .mono-id {
-    @apply font-mono text-xs tracking-tight text-ink-300;
-  }
-  .panel {
-    @apply bg-base-800 border border-base-600 rounded-xl shadow-panel;
-  }
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply bg-base-600 rounded-full;
+    @apply rounded-full bg-line-strong;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  /* Stagger children as they enter: set style="--i: n" on each item. */
+  .stagger {
+    animation-delay: calc(var(--i, 0) * 45ms);
   }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+/* Leaflet popups sit outside the React tree's styles; match the light theme. */
+.leaflet-popup-content-wrapper {
+  border-radius: 14px;
+  box-shadow: 0 8px 24px -8px rgba(16, 24, 40, 0.25);
+}
+.leaflet-popup-content {
+  margin: 14px 16px;
+  font-family: inherit;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

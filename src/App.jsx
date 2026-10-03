@@ -1,11 +1,10 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx'
 import AppShell from './components/layout/AppShell.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Monitoring from './pages/Monitoring.jsx'
 import LiveMap from './pages/LiveMap.jsx'
-import Devices from './pages/Devices.jsx'
 import DeviceDetails from './pages/DeviceDetails.jsx'
 import Recordings from './pages/Recordings.jsx'
 import RecordingDetails from './pages/RecordingDetails.jsx'
@@ -36,7 +35,7 @@ export default function App() {
         <Route index element={<Dashboard />} />
         <Route path="monitoring" element={<Monitoring />} />
         <Route path="map" element={<LiveMap />} />
-        <Route path="devices" element={<Devices />} />
+        <Route path="devices" element={<Navigate to="/monitoring" replace />} />
         <Route path="devices/:id" element={<DeviceDetails />} />
         <Route path="recordings" element={<Recordings />} />
         <Route path="recordings/:id" element={<RecordingDetails />} />
@@ -48,7 +47,6 @@ export default function App() {
         <Route path="audit" element={<AuditLogs />} />
         <Route path="settings" element={<Settings />} />
         <Route path="profile" element={<Profile />} />
-        {/* Legacy/secondary functionality, retained but not primary nav */}
         <Route path="incidents" element={<Incidents />} />
         <Route path="incidents/:id" element={<IncidentDetails />} />
         <Route path="evidence" element={<Evidence />} />

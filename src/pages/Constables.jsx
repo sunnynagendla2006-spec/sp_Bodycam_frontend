@@ -1,30 +1,37 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Plus, Trash2, Users } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
-import { listConstables, listConstableLocations, createConstable, deleteConstable } from '../api/constables.js'
+import { listConstables, createConstable, deleteConstable } from '../api/constables.js'
 import { friendlyErrorMessage } from '../api/client.js'
-import { LoadingSkeleton, ErrorState, EmptyState, PageHeader } from '../components/Primitives.jsx'
+import { LoadingSkeleton, ErrorState, EmptyState, PageHeader, ConfirmDialog } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import Battery from '../components/ui/Battery.jsx'
+import Button from '../components/ui/Button.jsx'
+import DataTable from '../components/ui/DataTable.jsx'
+import { Field } from '../components/ui/Form.jsx'
+import Modal from '../components/ui/Modal.jsx'
+import SearchInput from '../components/ui/SearchInput.jsx'
 import { canManageConstables } from '../utils/roles.js'
-import { formatDateTime } from '../utils/format.js'
+import { formatDateTimeShort } from '../utils/format.js'
 
 export default function Constables() {
   const { user } = useAuth()
   const { notify } = useToast()
   const [rows, setRows] = useState([])
-  const [locations, setLocations] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
   const [showCreate, setShowCreate] = useState(false)
+  const [removing, setRemoving] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   async function load() {
     setLoading(true)
     setError('')
     try {
-      const [c, l] = await Promise.all([listConstables(), listConstableLocations().catch(() => [])])
-      setRows(c)
-      setLocations(l)
+      setRows(await listConstables())
     } catch (err) {
       setError(friendlyErrorMessage(err))
     } finally {
@@ -36,87 +43,78 @@ export default function Constables() {
     load()
   }, [])
 
-  function locationFor(badge) {
-    return locations.find((l) => l.constable_id === badge)
-  }
-
-  async function handleDelete(id) {
-    if (!window.confirm('Delete this constable record?')) return
+  async function handleDelete() {
+    setBusy(true)
     try {
-      await deleteConstable(id)
+      await deleteConstable(removing.id)
       notify('Constable removed', { tone: 'success' })
+      setRemoving(null)
       await load()
     } catch (err) {
       notify(friendlyErrorMessage(err), { tone: 'error' })
+    } finally {
+      setBusy(false)
     }
   }
+
+  const canManage = canManageConstables(user?.role)
+  const needle = search.trim().toLowerCase()
+  const filtered = rows.filter((c) => !needle || `${c.badge_number || ''} ${c.phone || ''}`.toLowerCase().includes(needle))
+
+  const columns = [
+    {
+      key: 'badge',
+      header: 'Badge number',
+      primary: true,
+      cell: (c) => (
+        <Link to={`/constables/${c.id}`} className="text-brand-600 hover:text-brand-800 hover:underline">
+          {c.badge_number || '—'}
+        </Link>
+      ),
+    },
+    { key: 'status', header: 'Status', cell: (c) => <StatusBadge status={c.status} /> },
+    { key: 'phone', header: 'Phone', cell: (c) => c.phone || '—' },
+    { key: 'battery', header: 'Battery', cell: (c) => <Battery percent={c.battery_level} /> },
+    { key: 'login', header: 'Last signed in', cell: (c) => <span className="whitespace-nowrap text-ink-500">{formatDateTimeShort(c.last_login)}</span> },
+    ...(canManage
+      ? [
+          {
+            key: 'actions',
+            header: '',
+            cell: (c) => (
+              <Button variant="danger-soft" size="sm" icon={Trash2} onClick={() => setRemoving(c)}>
+                Remove
+              </Button>
+            ),
+          },
+        ]
+      : []),
+  ]
 
   return (
     <div>
       <PageHeader
         title="Constables"
-        subtitle="Roster scoped to your station/organization by the backend"
+        subtitle="The constables you can see and their current status"
         actions={
-          canManageConstables(user?.role) && (
-            <button onClick={() => setShowCreate(true)} className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500">
-              + Add constable
-            </button>
+          canManage && (
+            <Button icon={Plus} onClick={() => setShowCreate(true)}>
+              Add constable
+            </Button>
           )
         }
       />
+
+      <SearchInput value={search} onChange={setSearch} placeholder="Search by badge number or phone" className="mb-5 sm:max-w-sm" />
 
       {loading ? (
         <LoadingSkeleton rows={6} />
       ) : error ? (
         <ErrorState message={error} onRetry={load} />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No constables visible" />
+      ) : filtered.length === 0 ? (
+        <EmptyState icon={Users} title="No constables found" hint={search ? 'Try a different search.' : undefined} />
       ) : (
-        <div className="panel overflow-x-auto p-2 scrollbar-thin">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-xs uppercase text-ink-500">
-                <th className="p-2">Badge</th>
-                <th className="p-2">Status</th>
-                <th className="p-2">Phone</th>
-                <th className="p-2">Battery</th>
-                <th className="p-2">Assigned task</th>
-                <th className="p-2">Last login</th>
-                <th className="p-2">Location</th>
-                {canManageConstables(user?.role) && <th className="p-2">Actions</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => {
-                const loc = locationFor(c.badge_number)
-                return (
-                  <tr key={c.id} className="border-t border-base-700">
-                    <td className="p-2 font-medium">
-                      <Link to={`/constables/${c.id}`} className="text-sky-300 hover:underline">
-                        {c.badge_number || '—'}
-                      </Link>
-                    </td>
-                    <td className="p-2">
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td className="p-2 text-ink-300">{c.phone || '—'}</td>
-                    <td className="p-2 text-ink-500">{c.battery_level != null ? `${c.battery_level}%` : '—'}</td>
-                    <td className="p-2 font-mono text-xs text-ink-500">{c.assigned_task ? c.assigned_task.slice(0, 8) : '—'}</td>
-                    <td className="p-2 text-ink-500">{formatDateTime(c.last_login)}</td>
-                    <td className="p-2 text-ink-500">{loc ? `${loc.lat?.toFixed(4)}, ${loc.lon?.toFixed(4)}` : '—'}</td>
-                    {canManageConstables(user?.role) && (
-                      <td className="p-2">
-                        <button onClick={() => handleDelete(c.id)} className="rounded-md bg-signal-red/15 px-2 py-1 text-xs text-red-300 hover:bg-signal-red/25">
-                          Remove
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DataTable columns={columns} rows={filtered} />
       )}
 
       {showCreate && (
@@ -124,11 +122,22 @@ export default function Constables() {
           onClose={() => setShowCreate(false)}
           onCreated={async () => {
             setShowCreate(false)
-            notify('Constable created', { tone: 'success' })
+            notify('Constable added', { tone: 'success' })
             await load()
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!removing}
+        title="Remove this constable?"
+        message={`${removing?.badge_number || removing?.phone || 'This constable'} will be removed from the system.`}
+        confirmLabel="Remove"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setRemoving(null)}
+        onConfirm={handleDelete}
+      />
     </div>
   )
 }
@@ -154,39 +163,40 @@ function CreateConstableModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <form onSubmit={handleSubmit} className="panel w-full max-w-sm p-5">
-        <h2 className="mb-4 text-base font-semibold text-ink-100">Add constable</h2>
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-ink-300">Phone</span>
-          <input required value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue" />
-        </label>
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-ink-300">Badge number</span>
-          <input required value={badge} onChange={(e) => setBadge(e.target.value)} className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue" />
-        </label>
-        <label className="mb-3 block text-sm">
-          <span className="mb-1 block text-ink-300">Mobile app login password</span>
+    <Modal
+      title="Add constable"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" form="create-constable" loading={submitting}>
+            {submitting ? 'Adding…' : 'Add constable'}
+          </Button>
+        </>
+      }
+    >
+      <form id="create-constable" onSubmit={handleSubmit} className="space-y-4 pt-2">
+        <Field label="Phone number">
+          <input required value={phone} onChange={(e) => setPhone(e.target.value)} className="input" autoComplete="off" />
+        </Field>
+        <Field label="Badge number">
+          <input required value={badge} onChange={(e) => setBadge(e.target.value)} className="input" autoComplete="off" />
+        </Field>
+        <Field label="Password for the mobile app" hint="At least 8 characters. The constable signs in to the app with this phone number and password.">
           <input
             required
             minLength={8}
             type="text"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="Shared with the constable to log into the app"
-            className="w-full rounded-lg border border-base-600 bg-base-700/60 px-3 py-1.5 text-ink-100 outline-none focus:border-signal-blue"
+            placeholder="Share this with the constable"
+            className="input"
+            autoComplete="off"
           />
-          <span className="mt-1 block text-xs text-ink-400">At least 8 characters. The constable logs in with this phone number + password.</span>
-        </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-sm text-ink-300 hover:bg-base-700">
-            Cancel
-          </button>
-          <button type="submit" disabled={submitting} className="rounded-lg bg-signal-blue px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60">
-            {submitting ? 'Creating…' : 'Create'}
-          </button>
-        </div>
+        </Field>
       </form>
-    </div>
+    </Modal>
   )
 }

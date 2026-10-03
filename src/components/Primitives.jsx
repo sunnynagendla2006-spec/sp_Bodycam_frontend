@@ -1,18 +1,27 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { ArrowLeft, Inbox, TriangleAlert } from 'lucide-react'
+import Button from './ui/Button.jsx'
+import Modal from './ui/Modal.jsx'
+
 export function LoadingSkeleton({ rows = 5 }) {
   return (
-    <div className="space-y-2 animate-pulse">
+    <div className="space-y-3" role="status" aria-label="Loading">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="h-10 rounded-lg bg-base-700/60" />
+        <div key={i} className="skeleton h-14" style={{ opacity: 1 - i * 0.08 }} />
       ))}
     </div>
   )
 }
 
-export function EmptyState({ title, hint, action }) {
+export function EmptyState({ title, hint, action, icon: Icon = Inbox }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-base-600 py-14 text-center">
-      <p className="text-ink-100 font-medium">{title}</p>
-      {hint && <p className="text-sm text-ink-500 max-w-sm">{hint}</p>}
+    <div className="flex animate-fade-in flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-line-strong bg-surface/60 px-6 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+        <Icon className="h-6 w-6" aria-hidden="true" />
+      </span>
+      <p className="font-semibold text-ink-900">{title}</p>
+      {hint && <p className="max-w-sm text-sm text-ink-500">{hint}</p>}
       {action}
     </div>
   )
@@ -20,51 +29,72 @@ export function EmptyState({ title, hint, action }) {
 
 export function ErrorState({ message, onRetry }) {
   return (
-    <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-signal-red/30 bg-signal-red/5 py-14 text-center">
-      <p className="text-red-200 font-medium">{message}</p>
+    <div role="alert" className="flex animate-fade-in flex-col items-center justify-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-signal-red">
+        <TriangleAlert className="h-6 w-6" aria-hidden="true" />
+      </span>
+      <p className="font-semibold text-red-900">{message}</p>
       {onRetry && (
-        <button onClick={onRetry} className="rounded-lg bg-base-700 px-3 py-1.5 text-sm hover:bg-base-600">
+        <Button variant="secondary" size="sm" onClick={onRetry}>
           Try again
-        </button>
+        </Button>
       )}
     </div>
   )
 }
 
-export function PageHeader({ title, subtitle, actions }) {
+export function PageHeader({ title, subtitle, actions, back }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold text-ink-100">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}
+    <div className="mb-6 animate-rise-in">
+      {back && (
+        <Link to={back.to} className="mb-3 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-brand-600">
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+          {back.label}
+        </Link>
+      )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-semibold tracking-tight text-ink-900">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm text-ink-500">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
   )
 }
 
-export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', tone = 'default', onConfirm, onCancel, busy }) {
-  if (!open) return null
+// Yes/No confirmation. Pass reasonLabel to also collect an optional note,
+// which is handed to onConfirm.
+export function ConfirmDialog({ open, ...props }) {
+  return open ? <ConfirmBody {...props} /> : null
+}
+
+function ConfirmBody({ title, message, confirmLabel = 'Confirm', tone = 'default', onConfirm, onCancel, busy, reasonLabel }) {
+  const [reason, setReason] = useState('')
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="panel w-full max-w-sm p-5">
-        <h2 className="text-base font-semibold text-ink-100">{title}</h2>
-        <p className="mt-2 text-sm text-ink-300">{message}</p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button onClick={onCancel} disabled={busy} className="rounded-lg px-3 py-1.5 text-sm text-ink-300 hover:bg-base-700">
+    <Modal
+      title={title}
+      onClose={busy ? undefined : onCancel}
+      size="sm"
+      dismissible={!busy}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={busy}>
             Cancel
-          </button>
-          <button
-            onClick={onConfirm}
-            disabled={busy}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 ${
-              tone === 'danger' ? 'bg-signal-red hover:bg-red-500' : 'bg-signal-blue hover:bg-blue-500'
-            }`}
-          >
-            {busy ? 'Working…' : confirmLabel}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+          <Button variant={tone === 'danger' ? 'danger' : 'primary'} onClick={() => onConfirm(reason)} loading={busy}>
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm leading-relaxed text-ink-700">{message}</p>
+      {reasonLabel && (
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-sm font-medium text-ink-700">{reasonLabel}</span>
+          <textarea className="input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+        </label>
+      )}
+    </Modal>
   )
 }

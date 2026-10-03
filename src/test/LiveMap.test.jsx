@@ -78,7 +78,7 @@ describe('LiveMap constable identity + status visualization', () => {
     expect(markers[0].dataset.iconHtml).toContain(ACTIVE_COLOR)
     expect(markers[0].dataset.iconHtml).toContain('Constable Test 1')
     expect(screen.getAllByText('Constable Test 1').length).toBeGreaterThan(0)
-    expect(screen.getByText('ACTIVE')).toBeInTheDocument()
+    expect(screen.getByText('Online')).toBeInTheDocument()
   })
 
   it('3+4+5. an offline constable renders a RED marker AT THEIR LAST KNOWN COORDINATES, with their real name', () => {
@@ -91,7 +91,7 @@ describe('LiveMap constable identity + status visualization', () => {
     expect(JSON.parse(markers[0].dataset.position)).toEqual([12.34, 56.78])
     expect(markers[0].dataset.iconHtml).toContain(OFFLINE_COLOR)
     expect(markers[0].dataset.iconHtml).toContain('Constable Test 2')
-    expect(screen.getByText('OFFLINE')).toBeInTheDocument()
+    expect(screen.getByText('Offline')).toBeInTheDocument()
     expect(screen.getByText('Last known location')).toBeInTheDocument()
   })
 
@@ -101,7 +101,7 @@ describe('LiveMap constable identity + status visualization', () => {
     const { container } = render(<LiveMap />, { wrapper: MemoryRouter })
 
     expect(markersFor(container)).toHaveLength(0)
-    expect(screen.getByText('No Location')).toBeInTheDocument()
+    expect(screen.getByText('No location yet')).toBeInTheDocument()
     expect(screen.getByText('No location reported yet')).toBeInTheDocument()
     expect(screen.getByText('Constable Test 5')).toBeInTheDocument()
   })
@@ -125,9 +125,9 @@ describe('LiveMap constable identity + status visualization', () => {
     const { container } = render(<LiveMap />, { wrapper: MemoryRouter })
 
     expect(markersFor(container)).toHaveLength(2) // constable 5 has no location -> no marker
-    expect(screen.getByText('Live Constables')).toBeInTheDocument()
-    expect(screen.getByText('Offline / Last Known')).toBeInTheDocument()
-    expect(screen.getByText('No Location')).toBeInTheDocument()
+    expect(screen.getByText('Online now')).toBeInTheDocument()
+    expect(screen.getByText('Offline - last known place')).toBeInTheDocument()
+    expect(screen.getByText('No location yet')).toBeInTheDocument()
   })
 
   it('8+9. a constable going online -> offline flips GREEN to RED while keeping the same last-known coordinates', () => {

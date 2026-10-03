@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { BadgeCheck, Ban, ClipboardList, ExternalLink, FileText, FolderOpen, Send } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { listIncidents, verifyIncident, rejectIncident, dispatchIncident, getResponsibleStations } from '../api/incidents.js'
 import { listEvidence, evidenceStreamUrl } from '../api/evidence.js'
 import { fetchMyIncidents, acceptAssignment, rejectAssignment, updateMyAssignmentStatus } from '../api/constables.js'
 import { friendlyErrorMessage } from '../api/client.js'
-import { LoadingSkeleton, ErrorState, EmptyState } from '../components/Primitives.jsx'
+import { LoadingSkeleton, ErrorState, EmptyState, PageHeader, ConfirmDialog } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import Button from '../components/ui/Button.jsx'
+import { Card, CardHeader, Info, InfoGrid } from '../components/ui/Card.jsx'
 import { canVerifyIncident, canDispatch, isConstable } from '../utils/roles.js'
 import { formatDateTime, formatBytes } from '../utils/format.js'
+import { statusLabel } from '../utils/labels.js'
 
 const NEXT_STATUS = { accepted: 'en_route', en_route: 'arrived', arrived: 'completed' }
+const NEXT_LABEL = { en_route: 'I am on the way', arrived: 'I have arrived', completed: 'Mark as completed' }
+
+function distance(meters) {
+  if (meters == null) return ''
+  return meters >= 1000 ? ` (${(meters / 1000).toFixed(1)} km away)` : ` (${Math.round(meters)} m away)`
+}
 
 export default function IncidentDetails() {
   const { id } = useParams()
@@ -24,6 +34,7 @@ export default function IncidentDetails() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [reasonFor, setReasonFor] = useState(null) // 'incident' | 'assignment' | null
 
   async function load() {
     setLoading(true)
@@ -71,15 +82,23 @@ export default function IncidentDetails() {
     }
   }
 
+  async function confirmReason(reason) {
+    const kind = reasonFor
+    setReasonFor(null)
+    if (kind === 'incident') await runAction(() => rejectIncident(incident.id, reason), 'Incident rejected')
+    else await runAction(() => rejectAssignment(incident.id, reason), 'Assignment declined')
+  }
+
   if (loading) return <LoadingSkeleton rows={6} />
   if (error) return <ErrorState message={error} onRetry={load} />
   if (!incident) {
     return (
       <EmptyState
+        icon={FileText}
         title="Incident not found"
-        hint="It may not exist, or you may not be authorized to view it."
+        hint="It may not exist, or you may not have access to see it."
         action={
-          <Link to="/incidents" className="text-sm text-sky-300 hover:underline">
+          <Link to="/incidents" className="text-sm font-medium text-brand-600 hover:underline">
             Back to incidents
           </Link>
         }
@@ -87,159 +106,129 @@ export default function IncidentDetails() {
     )
   }
 
+  const next = myAssignment && NEXT_STATUS[myAssignment.assignment_status]
+
   return (
     <div className="space-y-6">
-      <div>
-        <Link to="/incidents" className="text-sm text-sky-300 hover:underline">
-          ← Back to incidents
-        </Link>
-        <div className="mt-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-semibold text-ink-100">{incident.display_id || incident.id}</h1>
-          <StatusBadge status={incident.status} />
-        </div>
-        <p className="mt-1 font-mono text-xs text-ink-500">{incident.id}</p>
-      </div>
+      <PageHeader
+        back={{ to: '/incidents', label: 'Back to incidents' }}
+        title={incident.display_id || 'Incident'}
+        subtitle={`Reported ${formatDateTime(incident.created_at)}`}
+        actions={<StatusBadge status={incident.status} />}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <section className="panel p-4 lg:col-span-2">
-          <h2 className="mb-3 font-semibold text-ink-100">Details</h2>
-          <dl className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <dt className="text-ink-500">Description</dt>
-              <dd className="text-ink-100">{incident.description || '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-ink-500">Created</dt>
-              <dd className="text-ink-100">{formatDateTime(incident.created_at)}</dd>
-            </div>
-            <div>
-              <dt className="text-ink-500">Station</dt>
-              <dd className="font-mono text-xs text-ink-100">{incident.station_id || '—'}</dd>
-            </div>
-            <div>
-              <dt className="text-ink-500">Location (WKT)</dt>
-              <dd className="font-mono text-xs text-ink-100">{incident.location || '—'}</dd>
-            </div>
-          </dl>
+        <Card className="animate-rise-in lg:col-span-2">
+          <CardHeader icon={FileText} title="What happened" />
+          <div className="space-y-5 p-5">
+            <p className="whitespace-pre-line text-ink-900">{incident.description || 'No description was added.'}</p>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {canVerifyIncident(user?.role) && incident.status === 'new' && (
-              <>
-                <button
-                  disabled={busy}
-                  onClick={() => runAction(() => verifyIncident(incident.id), 'Incident verified')}
-                  className="rounded-lg bg-signal-green/15 px-3 py-1.5 text-sm text-emerald-300 hover:bg-signal-green/25 disabled:opacity-50"
-                >
-                  Verify
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => runAction(() => rejectIncident(incident.id, window.prompt('Reason (optional):') || ''), 'Incident rejected')}
-                  className="rounded-lg bg-signal-red/15 px-3 py-1.5 text-sm text-red-300 hover:bg-signal-red/25 disabled:opacity-50"
-                >
-                  Reject
-                </button>
-              </>
+            {stations && (
+              <InfoGrid>
+                <Info label="Nearest station">
+                  {stations.primary_station ? `${stations.primary_station.name}${distance(stations.primary_station.distance_meters)}` : '—'}
+                </Info>
+                <Info label="Backup station">
+                  {stations.backup_station ? `${stations.backup_station.name}${distance(stations.backup_station.distance_meters)}` : '—'}
+                </Info>
+              </InfoGrid>
             )}
-            {canDispatch(user?.role) && incident.status === 'verified' && (
-              <button
-                disabled={busy}
-                onClick={() => runAction(() => dispatchIncident(incident.id), 'Dispatch attempted')}
-                className="rounded-lg bg-signal-blue/15 px-3 py-1.5 text-sm text-sky-300 hover:bg-signal-blue/25 disabled:opacity-50"
-              >
-                Dispatch
-              </button>
-            )}
-          </div>
 
-          {stations && (
-            <div className="mt-4 grid grid-cols-2 gap-3 border-t border-base-700 pt-4 text-sm">
-              <div>
-                <p className="text-ink-500">Primary station</p>
-                <p className="text-ink-100">
-                  {stations.primary_station ? `${stations.primary_station.name} (${stations.primary_station.distance_meters?.toFixed(0)} m)` : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-ink-500">Backup station</p>
-                <p className="text-ink-100">
-                  {stations.backup_station ? `${stations.backup_station.name} (${stations.backup_station.distance_meters?.toFixed(0)} m)` : '—'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {myAssignment && (
-            <div className="mt-4 border-t border-base-700 pt-4">
-              <h3 className="mb-2 text-sm font-semibold text-ink-100">My assignment</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                <StatusBadge status={myAssignment.assignment_status} />
-                {myAssignment.assignment_status === 'pending' && (
+            {((canVerifyIncident(user?.role) && incident.status === 'new') || (canDispatch(user?.role) && incident.status === 'verified')) && (
+              <div className="flex flex-wrap gap-3 border-t border-line pt-5">
+                {canVerifyIncident(user?.role) && incident.status === 'new' && (
                   <>
-                    <button
-                      disabled={busy}
-                      onClick={() => runAction(() => acceptAssignment(incident.id), 'Assignment accepted')}
-                      className="rounded-lg bg-signal-green/15 px-3 py-1.5 text-sm text-emerald-300 hover:bg-signal-green/25 disabled:opacity-50"
-                    >
-                      Accept
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => runAction(() => rejectAssignment(incident.id, window.prompt('Reason (optional):') || ''), 'Assignment rejected')}
-                      className="rounded-lg bg-signal-red/15 px-3 py-1.5 text-sm text-red-300 hover:bg-signal-red/25 disabled:opacity-50"
-                    >
+                    <Button icon={BadgeCheck} disabled={busy} onClick={() => runAction(() => verifyIncident(incident.id), 'Incident verified')}>
+                      Verify
+                    </Button>
+                    <Button variant="danger-soft" icon={Ban} disabled={busy} onClick={() => setReasonFor('incident')}>
                       Reject
-                    </button>
+                    </Button>
                   </>
                 )}
-                {NEXT_STATUS[myAssignment.assignment_status] && (
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      runAction(
-                        () => updateMyAssignmentStatus(incident.id, NEXT_STATUS[myAssignment.assignment_status]),
-                        `Marked as ${NEXT_STATUS[myAssignment.assignment_status].replace('_', ' ')}`,
-                      )
-                    }
-                    className="rounded-lg bg-signal-blue/15 px-3 py-1.5 text-sm text-sky-300 hover:bg-signal-blue/25 disabled:opacity-50"
-                  >
-                    Mark {NEXT_STATUS[myAssignment.assignment_status].replace('_', ' ')}
-                  </button>
+                {canDispatch(user?.role) && incident.status === 'verified' && (
+                  <Button icon={Send} disabled={busy} onClick={() => runAction(() => dispatchIncident(incident.id), 'Dispatch requested')}>
+                    Dispatch
+                  </Button>
                 )}
               </div>
-            </div>
-          )}
-        </section>
+            )}
 
-        <section className="panel p-4">
-          <h2 className="mb-3 font-semibold text-ink-100">Evidence ({evidence.length})</h2>
-          {evidence.length === 0 ? (
-            <EmptyState title="No evidence" hint="Evidence linked to this incident will appear here." />
-          ) : (
-            <ul className="space-y-2">
-              {evidence.map((m) => (
-                <li key={m.id} className="rounded-lg border border-base-700 p-3 text-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-medium text-ink-100">{m.original_filename || m.type}</span>
-                    <StatusBadge status={m.upload_status} />
-                  </div>
-                  <p className="mt-1 text-xs text-ink-500">
-                    {m.type} · {formatBytes(m.file_size)} · {formatDateTime(m.timestamp)}
-                  </p>
-                  <a
-                    href={evidenceStreamUrl(m.id)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-block text-xs text-sky-300 hover:underline"
-                  >
-                    Open evidence
-                  </a>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+            {myAssignment && (
+              <div className="border-t border-line pt-5">
+                <h3 className="mb-3 flex items-center gap-2 font-semibold text-ink-900">
+                  <ClipboardList className="h-5 w-5 text-brand-600" aria-hidden="true" />
+                  My assignment
+                </h3>
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusBadge status={myAssignment.assignment_status} />
+                  {myAssignment.assignment_status === 'pending' && (
+                    <>
+                      <Button icon={BadgeCheck} disabled={busy} onClick={() => runAction(() => acceptAssignment(incident.id), 'Assignment accepted')}>
+                        Accept
+                      </Button>
+                      <Button variant="danger-soft" icon={Ban} disabled={busy} onClick={() => setReasonFor('assignment')}>
+                        Decline
+                      </Button>
+                    </>
+                  )}
+                  {next && (
+                    <Button
+                      disabled={busy}
+                      onClick={() => runAction(() => updateMyAssignmentStatus(incident.id, next), `Updated: ${statusLabel(next)}`)}
+                    >
+                      {NEXT_LABEL[next] || `Mark ${statusLabel(next).toLowerCase()}`}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card className="animate-rise-in">
+          <CardHeader icon={FolderOpen} title={`Evidence (${evidence.length})`} />
+          <div className="p-4">
+            {evidence.length === 0 ? (
+              <EmptyState icon={FolderOpen} title="No evidence yet" hint="Photos, audio and video added to this incident show up here." />
+            ) : (
+              <ul className="space-y-2">
+                {evidence.map((m) => (
+                  <li key={m.id} className="rounded-xl border border-line p-3.5 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="truncate font-medium text-ink-900">{m.original_filename || m.type}</span>
+                      <StatusBadge status={m.upload_status} />
+                    </div>
+                    <p className="mt-1 text-xs capitalize text-ink-500">
+                      {m.type} · {formatBytes(m.file_size)} · {formatDateTime(m.timestamp)}
+                    </p>
+                    <a
+                      href={evidenceStreamUrl(m.id)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-brand-600 hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+                      Open
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Card>
       </div>
+
+      <ConfirmDialog
+        open={!!reasonFor}
+        title={reasonFor === 'incident' ? 'Reject this incident?' : 'Decline this assignment?'}
+        message={reasonFor === 'incident' ? 'This incident will be marked as rejected.' : 'The control room will see that you cannot take this assignment.'}
+        reasonLabel="Reason (optional)"
+        confirmLabel={reasonFor === 'incident' ? 'Reject' : 'Decline'}
+        tone="danger"
+        onCancel={() => setReasonFor(null)}
+        onConfirm={confirmReason}
+      />
     </div>
   )
 }

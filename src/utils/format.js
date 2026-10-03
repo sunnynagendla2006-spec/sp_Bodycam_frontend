@@ -21,6 +21,27 @@ export function formatDateTime(value) {
   return `${IST_FORMATTER.format(d)} IST`
 }
 
+// Compact version for table cells: "03 Oct, 09:59 am IST" (the year is only
+// added when it is not the current one).
+const IST_SHORT_FORMATTER = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata',
+  day: '2-digit',
+  month: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true,
+})
+const IST_YEAR_FORMATTER = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', year: 'numeric' })
+
+export function formatDateTimeShort(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return '—'
+  const year = IST_YEAR_FORMATTER.format(d)
+  const sameYear = year === IST_YEAR_FORMATTER.format(new Date())
+  return `${IST_SHORT_FORMATTER.format(d)}${sameYear ? '' : `, ${year}`} IST`
+}
+
 export function formatBytes(bytes) {
   if (bytes == null) return '—'
   if (bytes < 1024) return `${bytes} B`
@@ -48,6 +69,17 @@ export function formatRelativeTime(value) {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   return `${days}d ago`
+}
+
+// "12 min" / "1 h 5 min" -- how long something has been going on.
+export function formatElapsed(startedAt) {
+  if (!startedAt) return '—'
+  const ms = Date.now() - new Date(startedAt).getTime()
+  if (Number.isNaN(ms) || ms < 0) return '—'
+  const mins = Math.floor(ms / 60000)
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return h > 0 ? `${h} h ${m} min` : `${m} min`
 }
 
 export function titleCase(value) {
