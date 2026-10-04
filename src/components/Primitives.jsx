@@ -1,12 +1,30 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ArrowLeft, Inbox, TriangleAlert } from 'lucide-react'
 import Button from './ui/Button.jsx'
 import Modal from './ui/Modal.jsx'
 
+// How long a load is allowed to look like plain "loading" before the UI
+// admits something unusual is going on. The backend's free hosting tier
+// goes to sleep when idle and can take 15-20+ seconds to wake up on the
+// very first request -- without this, that genuinely looked exactly like
+// the whole page had frozen/reset rather than just being slow, which is
+// what was reported as "the page refreshes the first time I open it".
+const SLOW_LOAD_HINT_MS = 4000
+
 export function LoadingSkeleton({ rows = 5 }) {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), SLOW_LOAD_HINT_MS)
+    return () => clearTimeout(t)
+  }, [])
   return (
     <div className="space-y-3" role="status" aria-label="Loading">
+      {slow && (
+        <p className="animate-fade-in rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm font-medium text-amber-800">
+          Still waking up the server — the first load after a quiet period can take up to 30 seconds. No need to refresh, this will finish on its own.
+        </p>
+      )}
       {Array.from({ length: rows }).map((_, i) => (
         <div key={i} className="skeleton h-14" style={{ opacity: 1 - i * 0.08 }} />
       ))}

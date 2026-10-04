@@ -1,10 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
-import { Room, RoomEvent, Track } from 'livekit-client'
 import { Loader2, TriangleAlert, X } from 'lucide-react'
-import { getViewerToken } from '../api/liveStream'
-import { friendlyErrorMessage } from '../api/client'
+import { useLiveStreamFeed } from '../hooks/useLiveStreamFeed.js'
 import Button from './ui/Button.jsx'
 import StatusBadge from './StatusBadge.jsx'
+import LiveTrackVideo from './LiveTrackVideo.jsx'
 
 // Subscribe-only viewer for one live-stream session. Any number of these
 // can be mounted concurrently (in this tab, in other admins' own browser
@@ -13,72 +11,8 @@ import StatusBadge from './StatusBadge.jsx'
 // SFU handles fanning the same camera feed out to all of them. Nothing
 // here ever writes the video anywhere -- it's attached directly to a
 // <video> element and discarded on unmount/disconnect.
-// How long "Connecting…" is allowed to show with no video track before
-// treated as a real failure. Joining the LiveKit room itself succeeds
-// even when nobody is actually publishing (e.g. the camera is offline or
-// never started) -- without this, that left the UI spinning on
-// "Connecting…" forever with no way to tell the operator anything was
-// wrong.
-const NO_VIDEO_TIMEOUT_MS = 15000
-
 export default function LiveVideoView({ sessionId, onClose }) {
-  const videoRef = useRef(null)
-  const roomRef = useRef(null)
-  const [status, setStatus] = useState('connecting') // connecting | live | error | ended
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let cancelled = false
-    const room = new Room()
-    roomRef.current = room
-
-    const noVideoTimer = setTimeout(() => {
-      if (!cancelled) {
-        setStatus('error')
-        setError('No video received from the camera. It may be offline or not actually sharing video.')
-      }
-    }, NO_VIDEO_TIMEOUT_MS)
-
-    function attachIfVideo(track) {
-      if (track.kind === Track.Kind.Video && videoRef.current) {
-        clearTimeout(noVideoTimer)
-        track.attach(videoRef.current)
-        setStatus('live')
-      }
-    }
-
-    room.on(RoomEvent.TrackSubscribed, (track) => attachIfVideo(track))
-    room.on(RoomEvent.Disconnected, () => {
-      if (!cancelled) setStatus('ended')
-    })
-
-    async function connect() {
-      try {
-        const { livekit_url: url, token } = await getViewerToken(sessionId)
-        if (cancelled) return
-        await room.connect(url, token)
-        // Pick up any track already publishing before we joined.
-        for (const participant of room.remoteParticipants.values()) {
-          for (const publication of participant.trackPublications.values()) {
-            if (publication.track) attachIfVideo(publication.track)
-          }
-        }
-      } catch (err) {
-        if (!cancelled) {
-          clearTimeout(noVideoTimer)
-          setStatus('error')
-          setError(friendlyErrorMessage(err))
-        }
-      }
-    }
-    connect()
-
-    return () => {
-      cancelled = true
-      clearTimeout(noVideoTimer)
-      room.disconnect()
-    }
-  }, [sessionId])
+  const { status, error, videoTrack } = useLiveStreamFeed(sessionId)
 
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
@@ -105,7 +39,7 @@ export default function LiveVideoView({ sessionId, onClose }) {
           </Button>
         )}
       </div>
-      <video ref={videoRef} autoPlay playsInline muted={false} className="aspect-video w-full bg-black" />
+      <LiveTrackVideo track={videoTrack} className="aspect-video w-full bg-black" />
     </div>
   )
 }

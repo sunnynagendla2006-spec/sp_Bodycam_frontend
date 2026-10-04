@@ -1,22 +1,21 @@
-import { lazy, Suspense, useState } from 'react'
-import { Camera, CircleDot, Clock, Eye, MapPin, Radio, Square, SwitchCamera, Video } from 'lucide-react'
+import { useState } from 'react'
+import { Camera, CircleDot, Clock, Eye, Loader2, MapPin, Radio, Square, SwitchCamera, TriangleAlert, Video } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
 import { useOperations } from '../context/OperationsContext.jsx'
 import { useConstableLookup } from '../hooks/useConstableLookup.js'
+import { useLiveStreamFeed } from '../hooks/useLiveStreamFeed.js'
 import { issueCommand } from '../api/commands.js'
 import { friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, ConfirmDialog, PageHeader } from '../components/Primitives.jsx'
 import StatusBadge from '../components/StatusBadge.jsx'
+import LiveTrackVideo from '../components/LiveTrackVideo.jsx'
 import Battery from '../components/ui/Battery.jsx'
 import FilterTabs from '../components/ui/FilterTabs.jsx'
 import SearchInput from '../components/ui/SearchInput.jsx'
 import { canIssueCommands } from '../utils/roles.js'
 import { formatElapsed, formatRelativeTime } from '../utils/format.js'
 import { statusLabel } from '../utils/labels.js'
-
-// Only pulls in the LiveKit SDK once something is actually being watched.
-const LiveVideoView = lazy(() => import('../components/LiveVideoView.jsx'))
 
 const STATUS_FILTERS = ['', 'online', 'recording', 'stale', 'offline']
 
@@ -63,6 +62,16 @@ export default function Monitoring() {
   const [watchingId, setWatchingId] = useState(null)
   const [confirming, setConfirming] = useState(null) // { device, type } | null
   const [busy, setBusy] = useState(false)
+
+  // Exactly ONE live connection is ever opened for whichever device is
+  // "watching" -- shared between the big panel below AND that device's
+  // own small tile in the grid, via the same track attached to two
+  // <video> elements (see useLiveStreamFeed/LiveTrackVideo's doc
+  // comments). Must be called unconditionally, before the loading/error
+  // guards below, per the Rules of Hooks -- (liveStreams ?? []) is always
+  // at least an empty array even while the initial fetch is in flight.
+  const watchingSessionId = (liveStreams || []).find((s) => s.device_id === watchingId)?.id
+  const { status: watchStatus, error: watchError, videoTrack: watchTrack } = useLiveStreamFeed(watchingSessionId)
 
   if (loading) return <LoadingSkeleton rows={8} />
   if (error) return <ErrorState message={error} onRetry={refresh} />
@@ -131,9 +140,22 @@ export default function Monitoring() {
           </div>
           <div className="bg-black">
             {watchingLive ? (
-              <Suspense fallback={<div className="flex aspect-video items-center justify-center text-sm text-white/60">Loading player…</div>}>
-                <LiveVideoView sessionId={watchingLive.id} />
-              </Suspense>
+              <div className="relative">
+                {watchStatus === 'connecting' && (
+                  <div className="flex aspect-video items-center justify-center gap-2 text-sm text-white/60">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                    Connecting…
+                  </div>
+                )}
+                {watchStatus === 'error' && (
+                  <div className="flex aspect-video flex-col items-center justify-center gap-2 px-6 text-center text-sm text-signal-red">
+                    <TriangleAlert className="h-6 w-6" aria-hidden="true" />
+                    {watchError || 'Could not connect'}
+                  </div>
+                )}
+                {watchStatus === 'ended' && <div className="flex aspect-video items-center justify-center text-sm text-white/60">Live view ended.</div>}
+                {watchStatus === 'live' && <LiveTrackVideo track={watchTrack} className="aspect-video w-full bg-black" />}
+              </div>
             ) : (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 text-white/60">
                 <Video className="h-8 w-8" aria-hidden="true" />
@@ -189,16 +211,22 @@ export default function Monitoring() {
                   <StatusBadge status={d.status} />
                 </div>
 
-                {/* "Screen" -- the CCTV-tile look. Never opens its own
-                    live connection: a tile that's currently the "big
-                    screen" above would otherwise open a SECOND LiveKit
-                    connection for the exact same feed, doubling bandwidth
-                    for nothing -- it just mirrors that it's the one being
-                    watched. Every tile stays a cheap status tile, so 9+
-                    cameras on screen never means 9+ live video
+                {/* "Screen" -- the CCTV-tile look. Shows the actual live
+                    feed (not just a badge) once this card is the one
+                    "watching" AND that shared connection has a track --
+                    reuses the SAME track the big panel above is showing,
+                    attached to a second <video> element, never a second
+                    LiveKit connection for the same feed (see
+                    useLiveStreamFeed's doc comment). Every OTHER tile
+                    stays a cheap status tile with no connection at all,
+                    so 9+ cameras on screen never means 9+ live video
                     connections at once. */}
                 <div className="relative mt-4 flex aspect-video items-center justify-center bg-ink-900/90 text-white/70">
-                  <Camera className="h-8 w-8" aria-hidden="true" />
+                  {isWatching && watchStatus === 'live' && watchTrack ? (
+                    <LiveTrackVideo track={watchTrack} className="h-full w-full object-cover" />
+                  ) : (
+                    <Camera className="h-8 w-8" aria-hidden="true" />
+                  )}
                   {activeLive && (
                     <span className="absolute left-2.5 top-2.5 inline-flex items-center gap-1 rounded-full bg-signal-red px-2 py-0.5 text-[11px] font-semibold text-white">
                       <span className="h-1.5 w-1.5 animate-ping-soft rounded-full bg-white" />
@@ -206,7 +234,7 @@ export default function Monitoring() {
                     </span>
                   )}
                   {isWatching && (
-                    <span className="absolute right-2.5 top-2.5 rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-semibold text-white">Showing above</span>
+                    <span className="absolute right-2.5 top-2.5 rounded-full bg-brand-600 px-2 py-0.5 text-[11px] font-semibold text-white">Watching</span>
                   )}
                   {!activeLive && isOffline && <span className="absolute bottom-2.5 text-xs">Offline</span>}
                 </div>
