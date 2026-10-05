@@ -15,6 +15,10 @@ const Login = lazy(() => import('./pages/Login.jsx'))
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'))
 const Monitoring = lazy(() => import('./pages/Monitoring.jsx'))
 const LiveMap = lazy(() => import('./pages/LiveMap.jsx'))
+const VirtualAP = lazy(() => import('./pages/VirtualAP.jsx'))
+const AccessPoints = lazy(() => import('./pages/AccessPoints.jsx'))
+const CCTVMonitoring = lazy(() => import('./pages/CCTVMonitoring.jsx'))
+const VideoWall = lazy(() => import('./pages/VideoWall.jsx'))
 const DeviceDetails = lazy(() => import('./pages/DeviceDetails.jsx'))
 const Recordings = lazy(() => import('./pages/Recordings.jsx'))
 const RecordingDetails = lazy(() => import('./pages/RecordingDetails.jsx'))
@@ -46,6 +50,10 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="monitoring" element={<Monitoring />} />
           <Route path="map" element={<LiveMap />} />
+          <Route path="presence" element={<VirtualAP />} />
+          <Route path="access-points" element={<AccessPoints />} />
+          <Route path="cctv" element={<CCTVMonitoring />} />
+          <Route path="video-wall" element={<VideoWall />} />
           <Route path="devices" element={<Navigate to="/monitoring" replace />} />
           <Route path="devices/:id" element={<DeviceDetails />} />
           <Route path="recordings" element={<Recordings />} />

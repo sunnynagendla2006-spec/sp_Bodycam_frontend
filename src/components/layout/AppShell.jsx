@@ -9,21 +9,35 @@ import {
   FolderOpen,
   History,
   House,
+  LayoutGrid,
   LogOut,
   Map as MapIcon,
   Menu,
   Radio,
+  Router,
   Settings as SettingsIcon,
   Shield,
+  ShieldAlert,
   UserRound,
   Users,
+  Video,
   Wifi,
   WifiOff,
   X,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext.jsx'
 import { useOperations } from '../../context/OperationsContext.jsx'
-import { ROLE_LABELS, canViewStations, canViewRoster, canViewAudit, canViewSettings, canViewOperations } from '../../utils/roles.js'
+import {
+  ROLE_LABELS,
+  canViewStations,
+  canViewRoster,
+  canViewAudit,
+  canViewSettings,
+  canViewOperations,
+  canViewPresence,
+  canViewAccessPoints,
+  canViewCCTV,
+} from '../../utils/roles.js'
 
 const always = () => true
 
@@ -34,7 +48,10 @@ const NAV_GROUPS = [
     items: [
       { to: '/', label: 'Home', icon: House, end: true, show: always },
       { to: '/map', label: 'Live Map', tabLabel: 'Map', icon: MapIcon, show: canViewOperations },
+      { to: '/presence', label: 'AP Presence', tabLabel: 'Presence', icon: ShieldAlert, show: canViewPresence },
       { to: '/monitoring', label: 'Body Cameras', tabLabel: 'Cameras', icon: Camera, show: canViewOperations },
+      { to: '/cctv', label: 'CCTV Monitoring', icon: Video, show: canViewCCTV },
+      { to: '/video-wall', label: 'Live Video Wall', icon: LayoutGrid, show: canViewCCTV },
       { to: '/recordings', label: 'Recordings', icon: Clapperboard, show: canViewOperations },
       { to: '/alerts', label: 'Alerts', icon: Bell, show: canViewOperations },
     ],
@@ -49,6 +66,7 @@ const NAV_GROUPS = [
   {
     heading: 'Manage',
     items: [
+      { to: '/access-points', label: 'Access Points', icon: Router, show: canViewAccessPoints },
       { to: '/constables', label: 'Constables', icon: Users, show: canViewRoster },
       { to: '/stations', label: 'Police Stations', icon: Building2, show: canViewStations },
       { to: '/commands', label: 'Remote Actions', icon: Radio, show: canViewOperations },

@@ -75,3 +75,35 @@ export function canViewOperations(role) {
 export function canIssueCommands(role) {
   return ['admin', 'control_room', 'station'].includes(role)
 }
+
+// AP-based presence / Virtual AP: mirrors app/routers/presence.py (GET /presence/
+// is admin/control_room/station/constable) and app/routers/access_points.py
+// (GET /access-points/, GET /access-points/zones are admin/control_room/station --
+// NOT constable, who only ever sees the narrower GET /presence/virtual/map).
+export function canViewPresence(role) {
+  return ['admin', 'control_room', 'station', 'constable'].includes(role)
+}
+
+export function canViewAccessPoints(role) {
+  return ['admin', 'control_room', 'station'].includes(role)
+}
+
+// POST /presence/zones/{zone}/alert is require_role("admin", "control_room") only.
+export function canSendZoneAlert(role) {
+  return ['admin', 'control_room'].includes(role)
+}
+
+// POST/PATCH /access-points/* (create, enable/disable) is require_role("admin") only.
+export function canManageAccessPoints(role) {
+  return role === 'admin'
+}
+
+// Mirrors app/routers/cctv.py exactly: require_cctv_viewer = admin/control_room,
+// require_cctv_admin = admin only. station/constable/citizen have NO CCTV access at all.
+export function canViewCCTV(role) {
+  return ['admin', 'control_room'].includes(role)
+}
+
+export function canManageCCTV(role) {
+  return role === 'admin'
+}
