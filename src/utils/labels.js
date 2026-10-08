@@ -47,6 +47,13 @@ const STATUS_LABELS = {
   timeout: 'No response',
   live: 'Live',
   ended: 'Ended',
+  // AP-based presence (PresenceConnectionStatus) -- "disconnected" here is
+  // the officer's last-known-AP state going stale/offline, never removed
+  // from view (see VirtualAP.jsx). "moving" is a client-only transient
+  // label layered on top of these, never a backend enum value itself.
+  connected: 'Connected',
+  disconnected: 'Offline',
+  moving: 'Moving',
 }
 
 const ALERT_TYPE_LABELS = {
@@ -126,6 +133,20 @@ const ACTIVITY_LABELS = {
   'device.offline': 'Camera went offline',
   'device.stale': 'Camera signal is weak',
   'device.heartbeat': 'Camera checked in',
+  // AP-based presence / Virtual AP (see app/routers/presence.py,
+  // access_points.py log_action calls -- exact action strings, not guessed).
+  'presence.connected': 'Officer connected to an access point',
+  'presence.handoff': 'Officer handed off between access points',
+  'presence_virtual.connected': 'Officer connected to a virtual access point',
+  'presence_virtual.handoff': 'Officer handed off between virtual access points',
+  zone_emergency_alert_sent: 'Zone emergency alert sent',
+  access_point_created: 'Access point registered',
+  access_point_updated: 'Access point updated',
+  access_point_enabled: 'Access point enabled',
+  access_point_disabled: 'Access point disabled',
+  access_point_deleted: 'Access point removed',
+  zone_enabled: 'Zone enabled',
+  zone_disabled: 'Zone disabled',
 }
 
 export const ACTIVITY_FILTER_OPTIONS = [
@@ -151,6 +172,9 @@ export const ACTIVITY_FILTER_OPTIONS = [
   'police_station.updated',
   'police_station.deleted',
   'settings.updated',
+  'presence.handoff',
+  'presence_virtual.handoff',
+  'zone_emergency_alert_sent',
 ]
 
 export const statusLabel = (value) => lookup(STATUS_LABELS, value)

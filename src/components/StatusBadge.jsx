@@ -25,6 +25,11 @@ const TONE_MAP = {
   sent: 'blue', executed: 'green', timeout: 'red',
   // Live view
   live: 'red', ended: 'slate',
+  // AP-based presence (PresenceConnectionStatus) -- "disconnected" reuses
+  // the same slate/gray tone LiveMap.jsx's "no location yet" state uses,
+  // not a new color; "moving" is a client-only transient label (never a
+  // backend enum value) layered on top in the Virtual AP page itself.
+  connected: 'green', disconnected: 'slate', moving: 'amber',
 }
 
 const TONE_CLASSES = {
@@ -37,7 +42,7 @@ const TONE_CLASSES = {
 }
 
 // Statuses that mean "happening right now" get a softly pulsing dot.
-const LIVE_STATUSES = new Set(['recording', 'live'])
+const LIVE_STATUSES = new Set(['recording', 'live', 'moving'])
 
 export default function StatusBadge({ status, label }) {
   const tone = TONE_MAP[status] || 'slate'
