@@ -47,3 +47,13 @@ export async function deleteAccessPoint(accessPointId, { force = false } = {}) {
   const { data } = await client.delete(`/access-points/${accessPointId}`, { params: force ? { force: true } : undefined })
   return data
 }
+
+export async function enableZone(zone) {
+  const { data } = await client.post(`/access-points/zones/${encodeURIComponent(zone)}/enable`)
+  return data
+}
+
+export async function disableZone(zone) {
+  const { data } = await client.post(`/access-points/zones/${encodeURIComponent(zone)}/disable`)
+  return data
+}
