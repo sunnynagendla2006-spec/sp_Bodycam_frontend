@@ -1,33 +1,26 @@
-import { apiFetch } from './client.js'
+import { client } from './client'
 
 export async function listEventZones(params = {}) {
-  const query = new URLSearchParams()
-  if (params.deployment) query.set('deployment', params.deployment)
-  if (params.enabled !== undefined) query.set('enabled', String(params.enabled))
-  const qs = query.toString()
-  return apiFetch(`/event-zones/${qs ? `?${qs}` : ''}`)
+  const { data } = await client.get('/event-zones/', { params })
+  return data
 }
 
 export async function getEventZone(zoneId) {
-  return apiFetch(`/event-zones/${zoneId}`)
+  const { data } = await client.get(`/event-zones/${zoneId}`)
+  return data
 }
 
 export async function createEventZone(payload) {
-  return apiFetch('/event-zones/', {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  })
+  const { data } = await client.post('/event-zones/', payload)
+  return data
 }
 
 export async function updateEventZone(zoneId, payload) {
-  return apiFetch(`/event-zones/${zoneId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(payload),
-  })
+  const { data } = await client.patch(`/event-zones/${zoneId}`, payload)
+  return data
 }
 
 export async function disableEventZone(zoneId) {
-  return apiFetch(`/event-zones/${zoneId}/disable`, {
-    method: 'POST',
-  })
+  const { data } = await client.post(`/event-zones/${zoneId}/disable`)
+  return data
 }

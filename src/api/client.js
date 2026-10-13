@@ -94,3 +94,15 @@ export function friendlyErrorMessage(err) {
   }
   return 'Something went wrong. Please try again.'
 }
+
+export async function apiFetch(url, options = {}) {
+  const method = (options.method || 'GET').toLowerCase()
+  const data = options.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : undefined
+  const response = await client.request({
+    url,
+    method,
+    data,
+    headers: options.headers,
+  })
+  return response.data
+}
