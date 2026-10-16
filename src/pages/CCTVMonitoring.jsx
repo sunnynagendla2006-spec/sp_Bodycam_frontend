@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Minus, Pencil, Plug, Plus, Power, PowerOff, Radar, Trash2, Video, X, ZoomIn } from 'lucide-react'
 import { useAuth } from '../context/AuthContext.jsx'
 import { useToast } from '../context/ToastContext.jsx'
@@ -11,8 +11,10 @@ import {
   disableCamera,
   testCamera,
   requestCameraStream,
+  stopCameraStream,
   discoverCameras,
 } from '../api/cctv.js'
+import CameraPlayer from '../components/cctv/CameraPlayer.jsx'
 import { ApiError, friendlyErrorMessage } from '../api/client.js'
 import { LoadingSkeleton, ErrorState, EmptyState, PageHeader, ConfirmDialog } from '../components/Primitives.jsx'
 import { Card, CardHeader } from '../components/ui/Card.jsx'
@@ -269,22 +271,33 @@ function CameraCard({ camera, canManage, busy, onOpen, onEdit, onDelete, onToggl
   )
 }
 
-// A camera's "live picture" state, honestly derived from the real
-// backend response -- never fabricated. See cctv_providers.py: every
-// stream request today ends in status=failed with a real error (no media
-// gateway configured in this environment) -- that is reported as NOT
-// CONFIGURED, never as LIVE or a fake DEMO video pretending to be real.
+// A camera's "live picture" state, honestly derived from the real backend
+// response -- never fabricated. The picture only appears when the backend
+// reports an ACTIVE gateway session with a playback token; otherwise the real
+// reason (no gateway, unreachable recorder, unauthorized network, ...) is shown.
 export function CameraDetailModal({ camera, onClose }) {
   const { notify } = useToast()
   const [streamState, setStreamState] = useState('idle') // idle | requesting | not_configured | active | error
   const [streamError, setStreamError] = useState('')
+  const [playback, setPlayback] = useState(null)
+  // A stable function identity, so the player opens exactly one session per request.
+  const getPlayback = useMemo(() => (playback ? () => Promise.resolve(playback) : null), [playback])
+
+  // Release the gateway session when the dialog closes.
+  useEffect(() => {
+    if (streamState !== 'active') return undefined
+    return () => {
+      stopCameraStream(camera.id).catch(() => {})
+    }
+  }, [streamState, camera.id])
 
   async function handleWatch() {
     setStreamState('requesting')
     setStreamError('')
     try {
       const result = await requestCameraStream(camera.id)
-      if (result.session.status === 'active' && result.livekit_url && result.token) {
+      if (result.session.status === 'active' && result.playback) {
+        setPlayback(result.playback)
         setStreamState('active')
       } else {
         setStreamState('not_configured')
@@ -322,7 +335,7 @@ export function CameraDetailModal({ camera, onClose }) {
               <p className="text-sm text-ink-400">{streamError}</p>
             </div>
           )}
-          {streamState === 'active' && <p className="text-sm">Live — media bridge connected.</p>}
+          {streamState === 'active' && getPlayback && <CameraPlayer getPlayback={getPlayback} label={`Live view: ${camera.name}`} />}
         </div>
 
         <div className="grid grid-cols-2 gap-3 text-sm">

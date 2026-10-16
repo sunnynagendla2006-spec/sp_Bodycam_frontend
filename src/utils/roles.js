@@ -107,3 +107,13 @@ export function canViewCCTV(role) {
 export function canManageCCTV(role) {
   return role === 'admin'
 }
+
+// Site / network monitoring (routers/sites.py, site_monitoring.py, site_infrastructure.py): admin and control_room
+// may view (restricted sites are further limited server-side); only admin manages. Everyone else has no access.
+export function canViewSites(role) {
+  return ['admin', 'control_room'].includes(role)
+}
+
+export function canManageSites(role) {
+  return role === 'admin'
+}
