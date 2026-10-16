@@ -6,10 +6,7 @@ import LiveMap from '../pages/LiveMap.jsx'
 // react-leaflet's real MapContainer/Marker require actual DOM layout
 // (getBoundingClientRect etc.) that jsdom doesn't provide -- these tests
 // verify the DATA every marker/popup is given (position, color, label,
-// status text), not Leaflet's own rendering, which is out of scope for a
-// unit test and is exercised by physical verification instead. Marker is
-// stubbed to just expose its `position`/`icon` props and render its
-// children (the Popup) as plain DOM so assertions can query real text.
+// status text), not Leaflet's own rendering.
 vi.mock('react-leaflet', () => ({
   MapContainer: ({ children }) => <div data-testid="map-container">{children}</div>,
   TileLayer: () => null,
@@ -19,14 +16,34 @@ vi.mock('react-leaflet', () => ({
     </div>
   ),
   Popup: ({ children }) => <div data-testid="popup">{children}</div>,
+  Polygon: ({ children, positions, pathOptions }) => (
+    <div data-testid="polygon" data-positions={JSON.stringify(positions)} data-color={pathOptions?.color}>
+      {children}
+    </div>
+  ),
+  Circle: ({ center, radius }) => (
+    <div data-testid="circle" data-center={JSON.stringify(center)} data-radius={radius} />
+  ),
+  Tooltip: ({ children }) => <div data-testid="tooltip">{children}</div>,
   useMap: () => ({ flyTo: vi.fn() }),
 }))
 
 let mockDevices = []
+let mockEventZones = []
+let mockOfficerLocations = {}
+let mockPresence = []
 let mockOperationsError = ''
 const mockRefresh = vi.fn()
 vi.mock('../context/OperationsContext.jsx', () => ({
-  useOperations: () => ({ devices: mockDevices, loading: false, error: mockOperationsError, refresh: mockRefresh }),
+  useOperations: () => ({
+    devices: mockDevices,
+    eventZones: mockEventZones,
+    officerLocations: mockOfficerLocations,
+    presence: mockPresence,
+    loading: false,
+    error: mockOperationsError,
+    refresh: mockRefresh,
+  }),
 }))
 
 let mockById = {}
@@ -62,6 +79,9 @@ function markersFor(container) {
 describe('LiveMap constable identity + status visualization', () => {
   beforeEach(() => {
     mockDevices = []
+    mockEventZones = []
+    mockOfficerLocations = {}
+    mockPresence = []
     mockById = {}
     mockOperationsError = ''
     mockRosterLoading = false
@@ -184,13 +204,110 @@ describe('LiveMap constable identity + status visualization', () => {
     expect(JSON.parse(markers[0].dataset.position)).toEqual([2, 2])
   })
 
-  it('popup only shows fields that actually exist -- no fabricated Station when the constable has none', () => {
-    mockById = { '9': constable('9', { station_name: null }) }
-    mockDevices = [device('9', { status: 'online', device_identifier: null })]
-    render(<LiveMap />, { wrapper: MemoryRouter })
+  it('renders enabled EventZone polygons with translated lat/lon positions', () => {
+    mockEventZones = [
+      {
+        id: 'ez-1',
+        name: 'Main Gate Zone',
+        code: 'GATE-01',
+        zone_type: 'ENTRY_POINT',
+        color: '#3B82F6',
+        enabled: true,
+        priority: 10,
+        polygon: {
+          type: 'Polygon',
+          coordinates: [
+            [[80.12, 16.31], [80.13, 16.31], [80.13, 16.32], [80.12, 16.32], [80.12, 16.31]]
+          ]
+        }
+      },
+      {
+        id: 'ez-2',
+        name: 'Disabled Zone',
+        code: 'DIS-01',
+        zone_type: 'PARKING',
+        enabled: false,
+        polygon: {
+          type: 'Polygon',
+          coordinates: [[[80.0, 16.0], [80.1, 16.0], [80.1, 16.1], [80.0, 16.0]]]
+        }
+      }
+    ]
 
-    expect(screen.queryByText(/^Station:/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/^Device:/)).not.toBeInTheDocument()
+    const { container } = render(<LiveMap />, { wrapper: MemoryRouter })
+    const polygons = within(container).queryAllByTestId('polygon')
+    expect(polygons).toHaveLength(1) // only enabled zone is rendered
+    expect(polygons[0].dataset.color).toBe('#3B82F6')
+    // Coordinates translated from [lon, lat] to Leaflet [lat, lon]
+    const positions = JSON.parse(polygons[0].dataset.positions)
+    expect(positions[0][0]).toEqual([16.31, 80.12])
+  })
+
+  it('renders accuracy circle when officer reports accuracy > 0', () => {
+    mockById = { '1': constable('1') }
+    mockDevices = [device('1', { status: 'online', latitude: 16.31, longitude: 80.12, location_accuracy: 15.5 })]
+    const { container } = render(<LiveMap />, { wrapper: MemoryRouter })
+
+    const circles = within(container).queryAllByTestId('circle')
+    expect(circles).toHaveLength(1)
+    expect(JSON.parse(circles[0].dataset.center)).toEqual([16.31, 80.12])
+    expect(parseFloat(circles[0].dataset.radius)).toBeCloseTo(15.5)
+  })
+
+  it('real-time officerLocations takes precedence over REST device snapshot without requiring page reload', () => {
+    mockById = { '1': constable('1') }
+    mockDevices = [device('1', { status: 'online', latitude: 10.0, longitude: 20.0 })]
+    // officerLocations received via WebSocket
+    mockOfficerLocations = {
+      '1': {
+        latitude: 16.315,
+        longitude: 80.125,
+        accuracy: 8.0,
+        locationUpdatedAt: new Date().toISOString(),
+        geographicZone: 'Main Gate Zone',
+        zoneStatus: 'INSIDE',
+        sequenceNumber: 42,
+      }
+    }
+
+    const { container } = render(<LiveMap />, { wrapper: MemoryRouter })
+    const markers = markersFor(container)
+    expect(markers).toHaveLength(1)
+    // Authoritative position from officerLocations, not the device's 10.0, 20.0
+    expect(JSON.parse(markers[0].dataset.position)).toEqual([16.315, 80.125])
+    expect(screen.getByText('Main Gate Zone')).toBeInTheDocument()
+    expect(screen.getByText('Seq #42')).toBeInTheDocument()
+  })
+
+  it('clearly separates Geographic Zone from AP Association in popup', () => {
+    mockById = { '1': constable('1') }
+    mockDevices = [device('1', { status: 'online', latitude: 16.31, longitude: 80.12 })]
+    mockOfficerLocations = {
+      '1': {
+        latitude: 16.31,
+        longitude: 80.12,
+        geographicZone: 'Temple Core',
+        zoneStatus: 'INSIDE',
+      }
+    }
+    mockPresence = [
+      {
+        constable_id: '1',
+        access_point_code: 'AP-WEST-02',
+        zone: 'West Gate',
+        rssi_dbm: -58,
+        source: 'PHYSICAL_CONTROLLER',
+      }
+    ]
+
+    render(<LiveMap />, { wrapper: MemoryRouter })
+    // Geographic Zone header and value
+    expect(screen.getByText('Geographic Zone (GPS)')).toBeInTheDocument()
+    expect(screen.getByText('Temple Core')).toBeInTheDocument()
+    // AP Association header and value (distinct from GPS zone!)
+    expect(screen.getByText('AP Association (Wi-Fi)')).toBeInTheDocument()
+    expect(screen.getByText('AP-WEST-02')).toBeInTheDocument()
+    expect(screen.getByText(/RSSI: -58 dBm/)).toBeInTheDocument()
   })
 
   it('shows an error state instead of a blank/crashed map when the operations data fails to load', () => {

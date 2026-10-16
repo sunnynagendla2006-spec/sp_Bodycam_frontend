@@ -13,6 +13,8 @@ import {
   LogOut,
   Map as MapIcon,
   Menu,
+  MonitorPlay,
+  Radar,
   Radio,
   Router,
   Settings as SettingsIcon,
@@ -37,6 +39,8 @@ import {
   canViewPresence,
   canViewAccessPoints,
   canViewCCTV,
+  canManageCCTV,
+  canViewSites,
 } from '../../utils/roles.js'
 
 const always = () => true
@@ -50,7 +54,9 @@ const NAV_GROUPS = [
       { to: '/map', label: 'Live Map', tabLabel: 'Map', icon: MapIcon, show: canViewOperations },
       { to: '/presence', label: 'AP Presence', tabLabel: 'Presence', icon: ShieldAlert, show: canViewPresence },
       { to: '/monitoring', label: 'Body Cameras', tabLabel: 'Cameras', icon: Camera, show: canViewOperations },
-      { to: '/cctv', label: 'CCTV Monitoring', icon: Video, show: canViewCCTV },
+      { to: '/sites', label: 'Site Monitoring', icon: Radar, show: canViewSites },
+      { to: '/cctv/wall', label: 'CCTV Wall', icon: MonitorPlay, show: canViewCCTV },
+      { to: '/cctv', label: 'CCTV Cameras', icon: Video, end: true, show: canViewCCTV },
       { to: '/video-wall', label: 'Live Video Wall', icon: LayoutGrid, show: canViewCCTV },
       { to: '/recordings', label: 'Recordings', icon: Clapperboard, show: canViewOperations },
       { to: '/alerts', label: 'Alerts', icon: Bell, show: canViewOperations },
@@ -66,6 +72,7 @@ const NAV_GROUPS = [
   {
     heading: 'Manage',
     items: [
+      { to: '/cctv/buildings', label: 'CCTV Buildings', icon: Building2, show: canManageCCTV },
       { to: '/access-points', label: 'Access Points', icon: Router, show: canViewAccessPoints },
       { to: '/constables', label: 'Constables', icon: Users, show: canViewRoster },
       { to: '/stations', label: 'Police Stations', icon: Building2, show: canViewStations },

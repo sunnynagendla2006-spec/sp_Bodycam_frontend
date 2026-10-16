@@ -9,6 +9,7 @@ import { listAllCommands } from '../api/commands.js'
 import { listActiveLiveStreams } from '../api/liveStream.js'
 import { listPresence } from '../api/presence.js'
 import { listAccessPoints, listZones } from '../api/accessPoints.js'
+import { listEventZones } from '../api/eventZones.js'
 
 const OperationsContext = createContext(null)
 
@@ -124,6 +125,8 @@ export function OperationsProvider({ children }) {
   const [presence, setPresence] = useState([])
   const [accessPoints, setAccessPoints] = useState([])
   const [zones, setZones] = useState([])
+  const [eventZones, setEventZones] = useState([])
+  const [officerLocations, setOfficerLocations] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastEvent, setLastEvent] = useState(null)
@@ -148,7 +151,7 @@ export function OperationsProvider({ children }) {
   // Coalesce bursts of related events (e.g. many chunk_uploaded messages
   // during an active recording) into a single refetch rather than one
   // network call per WebSocket message.
-  const pendingRefetch = useRef({ devices: false, alerts: false, recordings: false, commands: false, liveStreams: false, presence: false, accessPoints: false, zones: false })
+  const pendingRefetch = useRef({ devices: false, alerts: false, recordings: false, commands: false, liveStreams: false, presence: false, accessPoints: false, zones: false, eventZones: false })
   const refetchTimer = useRef(null)
 
   const canSeeOperations = ['admin', 'control_room', 'station', 'constable'].includes(user?.role)
@@ -157,7 +160,7 @@ export function OperationsProvider({ children }) {
     setLoading(true)
     setError('')
     try {
-      const [d, a, r, c, l, p, ap, z] = await Promise.all([
+      const [d, a, r, c, l, p, ap, z, ez] = await Promise.all([
         listDevices(),
         listAlerts({ limit: 100 }),
         listRecordings({ limit: 100 }),
@@ -166,6 +169,7 @@ export function OperationsProvider({ children }) {
         listPresence().catch(() => []), // citizen role would 403 -- degrade gracefully
         listAccessPoints().catch(() => []), // constable role would 403 (admin/control_room/station only) -- degrade gracefully
         listZones().catch(() => []), // same role restriction as access points
+        listEventZones().catch(() => []), // geographic event zones
       ])
       setDevices(d)
       setAlerts(a)
@@ -175,6 +179,23 @@ export function OperationsProvider({ children }) {
       setPresence(p)
       setAccessPoints(ap)
       setZones(z)
+      setEventZones(ez)
+      // Initialize officerLocations projection from devices snapshot
+      const initialLocations = {}
+      d.forEach((dev) => {
+        if (dev.constable_id && dev.latitude != null && dev.longitude != null) {
+          initialLocations[dev.constable_id] = {
+            latitude: dev.latitude,
+            longitude: dev.longitude,
+            accuracy: dev.location_accuracy,
+            locationUpdatedAt: dev.location_updated_at,
+            geographicZone: dev.geographic_zone,
+            zoneStatus: dev.zone_status,
+            updatedAt: Date.now(),
+          }
+        }
+      })
+      setOfficerLocations(initialLocations)
     } catch (err) {
       setError(err?.message || 'Failed to load operational data')
     } finally {
@@ -212,6 +233,7 @@ export function OperationsProvider({ children }) {
         if (pending.presence) setPresence(await listPresence().catch(() => []))
         if (pending.accessPoints) setAccessPoints(await listAccessPoints().catch(() => []))
         if (pending.zones) setZones(await listZones().catch(() => []))
+        if (pending.eventZones) setEventZones(await listEventZones().catch(() => []))
       } catch {
         // A transient refetch failure just means the UI stays at its last
         // known-good state until the next event triggers another attempt.
@@ -246,11 +268,93 @@ export function OperationsProvider({ children }) {
       if (PRESENCE_TOUCHING_EVENTS.has(evt.event)) {
         scheduleRefetch('presence')
         scheduleRefetch('zones')
-        // A real arrival (handoff/connected) or a status re-check
-        // (stale/offline) supersedes any in-flight "moving" animation for
-        // this same device -- the officer is no longer mid-transition.
         const deviceId = evt.data?.device_id
         if (deviceId) clearMoving(deviceId)
+      }
+
+      // Real-time authoritative location stream handler
+      if (evt.event === 'constable.location_updated') {
+        const d = evt.data || {}
+        const constableId = d.constable_id
+        if (constableId) {
+          setOfficerLocations((prev) => {
+            const existing = prev[constableId]
+            // Monotonic sequence / timestamp ordering guard:
+            if (
+              existing &&
+              existing.sequenceNumber != null &&
+              d.sequence_number != null &&
+              d.sequence_number < existing.sequenceNumber
+            ) {
+              return prev
+            }
+            return {
+              ...prev,
+              [constableId]: {
+                latitude: d.latitude,
+                longitude: d.longitude,
+                accuracy: d.accuracy,
+                recordedAt: d.recorded_at,
+                serverReceivedAt: d.server_received_at,
+                sequenceNumber: d.sequence_number,
+                geographicZone: d.geographic_zone,
+                zoneStatus: d.zone_status,
+                source: d.source,
+                updatedAt: Date.now(),
+              },
+            }
+          })
+
+          // Immediately update corresponding device in state so LiveMap, Monitoring,
+          // and DeviceDetails update without waiting for debounced REST polling
+          setDevices((prevDevices) =>
+            prevDevices.map((dev) => {
+              if (dev.constable_id === constableId) {
+                return {
+                  ...dev,
+                  latitude: d.latitude,
+                  longitude: d.longitude,
+                  location_accuracy: d.accuracy,
+                  location_updated_at: d.server_received_at || new Date().toISOString(),
+                  geographic_zone: d.geographic_zone,
+                  zone_status: d.zone_status,
+                }
+              }
+              return dev
+            }),
+          )
+        }
+      }
+
+      // Real-time geographic zone boundary change
+      if (evt.event === 'constable.zone_changed') {
+        const d = evt.data || {}
+        const constableId = d.constable_id
+        if (constableId) {
+          setOfficerLocations((prev) => {
+            const existing = prev[constableId] || {}
+            return {
+              ...prev,
+              [constableId]: {
+                ...existing,
+                geographicZone: d.current_zone,
+                zoneStatus: d.zone_status,
+                updatedAt: Date.now(),
+              },
+            }
+          })
+          setDevices((prevDevices) =>
+            prevDevices.map((dev) =>
+              dev.constable_id === constableId
+                ? { ...dev, geographic_zone: d.current_zone, zone_status: d.zone_status }
+                : dev,
+            ),
+          )
+        }
+      }
+
+      if (evt.event && evt.event.startsWith('event_zone.')) {
+        scheduleRefetch('eventZones')
       }
 
       if (evt.event === 'presence.moving') {
@@ -293,6 +397,15 @@ export function OperationsProvider({ children }) {
 
   const { connected } = useOpsSocket(handleEvent, { enabled: canSeeOperations })
 
+  // Re-fetch snapshots automatically on WebSocket reconnection
+  const prevConnectedRef = useRef(false)
+  useEffect(() => {
+    if (connected && !prevConnectedRef.current && !loading) {
+      loadAll()
+    }
+    prevConnectedRef.current = connected
+  }, [connected, loading, loadAll])
+
   const counts = useMemo(() => {
     const online = devices.filter((d) => d.status === 'online' || d.status === 'recording').length
     const stale = devices.filter((d) => d.status === 'stale').length
@@ -314,6 +427,8 @@ export function OperationsProvider({ children }) {
     presence,
     accessPoints,
     zones,
+    eventZones,
+    officerLocations,
     movingOfficers,
     zoneAlerts,
     counts,
