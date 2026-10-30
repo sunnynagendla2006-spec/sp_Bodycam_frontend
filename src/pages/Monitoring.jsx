@@ -134,9 +134,21 @@ export default function Monitoring() {
               </span>
               <p className="font-semibold text-ink-900">Watching: {constableLabel(watchingDevice.constable_id)}</p>
             </div>
-            <button type="button" onClick={() => setWatchingId(null)} className="text-sm font-medium text-ink-500 hover:text-ink-900">
-              Close
-            </button>
+            <div className="flex items-center gap-4">
+              {canControl && watchingLive && (
+                <button
+                  type="button"
+                  onClick={() => setConfirming({ device: watchingDevice, type: 'stop_live_stream' })}
+                  className="flex items-center gap-1.5 text-sm font-medium text-signal-red hover:text-red-700"
+                >
+                  <Square className="h-3.5 w-3.5" aria-hidden="true" />
+                  Stop live view
+                </button>
+              )}
+              <button type="button" onClick={() => setWatchingId(null)} className="text-sm font-medium text-ink-500 hover:text-ink-900">
+                Close
+              </button>
+            </div>
           </div>
           <div className="bg-black">
             {watchingLive ? (
@@ -249,7 +261,10 @@ export default function Monitoring() {
                         <IconAction icon={CircleDot} tone="danger" title="Start recording" disabled={isOffline} onClick={() => setConfirming({ device: d, type: 'start_recording' })} />
                       )}
                       {activeLive ? (
-                        <IconAction icon={Eye} title="Watch live" onClick={() => setWatchingId(d.id)} />
+                        <>
+                          <IconAction icon={Eye} title="Watch live" onClick={() => setWatchingId(d.id)} />
+                          <IconAction icon={Square} tone="danger" title="Stop live view" onClick={() => setConfirming({ device: d, type: 'stop_live_stream' })} />
+                        </>
                       ) : (
                         <IconAction icon={Video} title="Request live view" disabled={isOffline} onClick={() => setConfirming({ device: d, type: 'start_live_stream' })} />
                       )}
